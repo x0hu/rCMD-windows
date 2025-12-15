@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:lowtechguys.com)",
+      "Bash(dotnet build:*)",
+      "Bash(dotnet --version:*)",
+      "Bash(dotnet publish:*)",
+      "Bash(dir /s /b \"C:\\Users\\Bryan\\Documents\\learn_stuff\\rCMDWINDOWS\")",
+      "Bash(dir:*)",
+      "Bash(findstr:*)",
+      "Bash(powershell:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
