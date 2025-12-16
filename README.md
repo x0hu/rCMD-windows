@@ -1,8 +1,8 @@
 # rcmd for Windows
 
-A Windows app switcher inspired by macOS's rcmd. Switch to applications instantly using Right Alt + letter shortcuts.
+A Windows app switcher inspired by macOS's [rcmd](https://lowtechguys.com/rcmd/). Switch to applications instantly using Right Alt + letter shortcuts.
 
-## Features (Proof of Concept)
+## Features 
 
 - **Instant app switching**: Hold Right Alt and press the first letter of an app's process name
 - **System tray app**: Runs quietly in the background
@@ -43,17 +43,6 @@ dotnet run
 ```
 
 The application will start in the system tray (look for a blue icon in your notification area).
-
-## Project Structure
-
-```
-RcmdWindows/
-├── Program.cs              # Entry point
-├── TrayApplication.cs      # System tray and main application logic
-├── KeyboardHook.cs         # Low-level keyboard hook for Right Alt
-├── ApplicationManager.cs   # Window enumeration and app finding
-└── WindowSwitcher.cs       # Window switching logic
-```
 
 ## Current Limitations (POC)
 
