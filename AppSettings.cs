@@ -171,13 +171,19 @@ namespace RcmdWindows
                 {
                     if (enabled)
                     {
-                        string exePath = System.Reflection.Assembly.GetExecutingAssembly().Location;
-                        // Handle .dll case for .NET Core single-file publish
-                        if (exePath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+                        // Use Environment.ProcessPath for .NET 6+ (most reliable for single-file apps)
+                        string? exePath = Environment.ProcessPath;
+
+                        // Fallback to process module path
+                        if (string.IsNullOrEmpty(exePath))
                         {
-                            exePath = exePath.Replace(".dll", ".exe");
+                            exePath = System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName;
                         }
-                        key.SetValue(AppName, $"\"{exePath}\"");
+
+                        if (!string.IsNullOrEmpty(exePath))
+                        {
+                            key.SetValue(AppName, $"\"{exePath}\"");
+                        }
                     }
                     else
                     {
