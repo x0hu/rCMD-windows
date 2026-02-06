@@ -1,27 +1,29 @@
-# rcmd for Windows
+# rALT for Windows
 
-A Windows app switcher inspired by macOS's [rcmd](https://lowtechguys.com/rcmd/). Switch to applications instantly using Right Alt + letter shortcuts.
+A Windows app switcher inspired by macOS's rcmd. Switch to applications instantly using Right Alt (rALT) + letter shortcuts.
 
-## Features 
+## Features
 
-- **Instant app switching**: Hold Right Alt and press the first letter of an app's process name
+- **Instant app switching**: Hold Right Alt (rALT) and press the first letter of an app's process name
 - **System tray app**: Runs quietly in the background
 - **Low-level keyboard hook**: Captures Right Alt + letter combinations
 - **Automatic window enumeration**: Finds running applications
 - **Restore minimized windows**: Automatically restores windows before switching
+- **Settings UI**: Configure behavior, captured keys, and app shortcuts
+- **Overlay**: Shows available app letters while holding the modifier
 
 ## How It Works
 
-1. Hold the **Right Alt** key
+1. Hold the **Right Alt (rALT)** key
 2. Press a **letter** (a-z)
 3. The app will switch to the first running application whose process name starts with that letter
 
 ### Examples
 
-- Right Alt + **C** → Chrome
-- Right Alt + **V** → Visual Studio Code (or VS)
-- Right Alt + **N** → Notepad
-- Right Alt + **E** → Excel or Explorer
+- Right Alt + **C** -> Chrome
+- Right Alt + **V** -> Visual Studio Code (or VS)
+- Right Alt + **N** -> Notepad
+- Right Alt + **E** -> Excel or Explorer
 
 ## Building and Running
 
@@ -42,25 +44,19 @@ dotnet build
 dotnet run
 ```
 
-The application will start in the system tray (look for a blue icon in your notification area).
+The application will start in the system tray.
 
 ## Current Limitations (POC)
 
-- Only matches by process name first letter
-- No cycling between multiple apps with the same first letter yet
-- No custom key assignments yet
-- No configuration UI yet
+- Only matches by process name first letter by default
 - No ability to launch apps that aren't running yet
 - Console output for debugging (will be hidden in release builds)
 
 ## Next Steps
 
-- [ ] Implement cycling between apps with the same first letter
+- [ ] Implement improved cycling between apps with the same first letter
 - [ ] Add configuration file support (JSON)
-- [ ] Allow custom letter assignments
 - [ ] Launch apps that aren't running
-- [ ] Add settings UI
-- [ ] Optional visual overlay during switching
 - [ ] Window-level switching (not just apps)
 - [ ] Auto-start with Windows
 

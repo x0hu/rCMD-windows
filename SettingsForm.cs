@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
-using System.Drawing.Drawing2D;
 using System.Linq;
 using System.Windows.Forms;
 
@@ -9,1045 +8,675 @@ namespace RcmdWindows
 {
     public class SettingsForm : Form
     {
-        private ApplicationManager appManager;
-        private Panel contentPanel;
-        private int currentY = 20;
-
-        // Colors matching macOS dark theme
-        private static readonly Color BgColor = Color.FromArgb(30, 30, 30);
-        private static readonly Color SectionBgColor = Color.FromArgb(45, 45, 45);
-        private static readonly Color TextColor = Color.FromArgb(255, 255, 255);
-        private static readonly Color SubTextColor = Color.FromArgb(140, 140, 140);
-        private static readonly Color AccentColor = Color.FromArgb(100, 149, 237);
-        private static readonly Color ToggleBgColor = Color.FromArgb(60, 60, 60);
-        private static readonly Color ToggleSelectedColor = Color.FromArgb(80, 80, 80);
-        private static readonly Color KeyBgColor = Color.FromArgb(70, 70, 70);
-        private static readonly Color KeySelectedColor = Color.FromArgb(120, 100, 80);
-        private static readonly Color KeyDisabledColor = Color.FromArgb(50, 50, 50);
+        private readonly ApplicationManager appManager;
+        private readonly AppSettings settings;
+        private readonly AppSettings draft;
+        private readonly ToolTip toolTip;
+        private readonly TableLayoutPanel root;
+        private readonly Panel leftColumn;
+        private readonly Panel rightColumn;
+        private readonly Panel footer;
 
         public SettingsForm(ApplicationManager appManager)
         {
             this.appManager = appManager;
-            InitializeForm();
-            BuildUI();
-        }
+            settings = AppSettings.Instance;
+            draft = settings.Clone();
+            toolTip = new ToolTip();
 
-        private void InitializeForm()
-        {
-            this.Text = "Settings";
-            this.Size = new Size(600, 750);
-            this.StartPosition = FormStartPosition.CenterScreen;
-            this.FormBorderStyle = FormBorderStyle.FixedDialog;
-            this.MaximizeBox = false;
-            this.BackColor = BgColor;
-            this.ForeColor = TextColor;
-            this.Font = new Font("Segoe UI", 9f);
-            this.AutoScroll = true;
+            Text = "Settings";
+            StartPosition = FormStartPosition.CenterScreen;
+            AutoScaleMode = AutoScaleMode.Dpi;
+            Font = SystemFonts.MessageBoxFont;
+            MinimumSize = new Size(980, 800);
 
-            // Ensure window appears on top when opened from system tray
-            this.TopMost = true;
-
-            contentPanel = new Panel
+            root = new TableLayoutPanel
             {
-                AutoScroll = true,
                 Dock = DockStyle.Fill,
-                BackColor = BgColor
+                AutoScroll = false,
+                ColumnCount = 2,
+                RowCount = 1,
+                Padding = new Padding(16),
+                AutoSize = false
             };
-            this.Controls.Add(contentPanel);
-        }
 
-        protected override void OnShown(EventArgs e)
-        {
-            base.OnShown(e);
-            // Disable TopMost after form is shown so it behaves normally
-            this.TopMost = false;
-            this.Activate();
+            root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+            root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+
+            leftColumn = new Panel
+            {
+                Dock = DockStyle.Fill,
+                AutoSize = false,
+                AutoScroll = false,
+                Padding = new Padding(0, 0, 8, 0)
+            };
+
+            rightColumn = new Panel
+            {
+                Dock = DockStyle.Fill,
+                AutoSize = false,
+                AutoScroll = false,
+                Padding = new Padding(0, 0, 12, 0)
+            };
+
+            root.Controls.Add(leftColumn, 0, 0);
+            root.Controls.Add(rightColumn, 1, 0);
+
+            footer = BuildFooter();
+            Controls.Add(root);
+            Controls.Add(footer);
+
+            Resize += (s, e) => UpdateSectionWidths();
+            ApplyUiScale(draft.SettingsUiScale);
+            BuildUI();
+            UiTheme.Apply(this);
         }
 
         private void BuildUI()
         {
-            // Title
-            var titleLabel = new Label
+            AddSection(leftColumn, BuildGeneralSection());
+            AddSection(leftColumn, BuildHotkeySection());
+            AddSection(leftColumn, BuildKeyConfigSection());
+
+            AddSection(rightColumn, BuildFocusSection());
+            AddSection(rightColumn, BuildAppShortcutsSection());
+            AddSection(rightColumn, BuildCapturedKeysSection());
+        }
+
+        private void AddSection(Control container, Control section)
+        {
+            section.Margin = new Padding(0, 0, 10, 16);
+            section.Dock = DockStyle.Top;
+            section.AutoSize = true;
+            container.Controls.Add(section);
+            section.BringToFront();
+
+            if (section is GroupBox groupBox)
             {
-                Text = "Settings",
-                Font = new Font("Segoe UI", 24f, FontStyle.Bold),
-                ForeColor = TextColor,
-                Location = new Point(20, currentY),
+                groupBox.AutoSize = false;
+                int targetWidth = Math.Max(0, container.ClientSize.Width - 12);
+                groupBox.Width = targetWidth;
+                groupBox.PerformLayout();
+                int preferredHeight = groupBox.GetPreferredSize(new Size(targetWidth, 0)).Height;
+                groupBox.Height = preferredHeight + 20;
+            }
+        }
+
+        private Panel BuildFooter()
+        {
+            var panel = new Panel
+            {
+                Dock = DockStyle.Bottom,
+                Height = 84,
+                Padding = new Padding(16, 12, 16, 12)
+            };
+
+            var saveButton = new Button
+            {
+                Text = "Save",
+                AutoSize = true,
+                Padding = new Padding(12, 6, 12, 6),
+                MinimumSize = new Size(90, 34)
+            };
+            saveButton.Click += (s, e) =>
+            {
+                settings.ApplyFrom(draft, includeLaunchAtLogin: false);
+                settings.SetLaunchAtLogin(draft.LaunchAtLogin);
+                settings.Save();
+                Close();
+            };
+
+            var closeButton = new Button
+            {
+                Text = "Close",
+                AutoSize = true,
+                Padding = new Padding(12, 6, 12, 6),
+                MinimumSize = new Size(90, 34)
+            };
+            closeButton.Click += (s, e) => Close();
+
+            var flow = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Right,
+                AutoSize = true,
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = false,
+                Padding = new Padding(0, 0, 0, 0)
+            };
+
+            flow.Controls.Add(saveButton);
+            flow.Controls.Add(closeButton);
+            panel.Controls.Add(flow);
+            return panel;
+        }
+
+        private GroupBox BuildGeneralSection()
+        {
+            var box = CreateGroupBox("General");
+            var panel = CreateFlowPanel();
+
+            var launchAtLogin = CreateCheckBox("Launch at login", draft.LaunchAtLogin, (s, e) => { });
+            launchAtLogin.CheckedChanged += (s, e) => draft.LaunchAtLogin = launchAtLogin.Checked;
+
+            var hideTray = CreateCheckBox("Hide tray icon", draft.HideTrayIcon, (s, e) => { });
+            hideTray.CheckedChanged += (s, e) =>
+            {
+                draft.HideTrayIcon = hideTray.Checked;
+            };
+
+            var excludeStatic = CreateCheckBox("Exclude static apps when cycling from dynamic apps", draft.ExcludeStaticApps, (s, e) => { });
+            excludeStatic.CheckedChanged += (s, e) =>
+            {
+                draft.ExcludeStaticApps = excludeStatic.Checked;
+            };
+
+            panel.Controls.Add(launchAtLogin);
+            panel.Controls.Add(hideTray);
+            panel.Controls.Add(excludeStatic);
+
+            var sizeTable = CreateTwoColumnTable();
+
+            var overlaySizeLabel = CreateLabel("Overlay size");
+            var overlaySize = CreateComboBox(Enum.GetNames(typeof(OverlaySize)));
+            overlaySize.SelectedItem = draft.SwitcherOverlaySize.ToString();
+            overlaySize.SelectedIndexChanged += (s, e) =>
+            {
+                if (Enum.TryParse(overlaySize.SelectedItem?.ToString(), out OverlaySize size))
+                {
+                    draft.SwitcherOverlaySize = size;
+                }
+            };
+
+            AddRow(sizeTable, overlaySizeLabel, overlaySize);
+
+            panel.Controls.Add(sizeTable);
+            box.Controls.Add(panel);
+            return box;
+        }
+
+        private GroupBox BuildHotkeySection()
+        {
+            var box = CreateGroupBox("Hotkeys");
+            var panel = CreateFlowPanel();
+
+            var assignLetter = CreateCheckBox("Enable assign letter hotkey (Alt)", draft.EnableAssignLetterHotkey, (s, e) => { });
+            assignLetter.CheckedChanged += (s, e) =>
+            {
+                draft.EnableAssignLetterHotkey = assignLetter.Checked;
+            };
+            toolTip.SetToolTip(assignLetter, "Hold the app modifier and Alt to assign a letter to the focused app.");
+
+            var forceCycle = CreateCheckBox("Enable force cycle hotkey (Right Shift)", draft.EnableForceCycleHotkey, (s, e) => { });
+            forceCycle.CheckedChanged += (s, e) =>
+            {
+                draft.EnableForceCycleHotkey = forceCycle.Checked;
+            };
+            toolTip.SetToolTip(forceCycle, "Hold the app modifier and Right Shift to cycle apps with the same letter.");
+
+            var hideOthers = CreateCheckBox("Enable hide others on focus (Left Shift)", draft.EnableHideOthersOnFocus, (s, e) => { });
+            hideOthers.CheckedChanged += (s, e) =>
+            {
+                draft.EnableHideOthersOnFocus = hideOthers.Checked;
+            };
+            toolTip.SetToolTip(hideOthers, "Hold the app modifier and Left Shift to minimize other apps.");
+
+            var singleApp = CreateCheckBox("Single app mode", draft.SingleAppMode, (s, e) => { });
+            singleApp.CheckedChanged += (s, e) =>
+            {
+                draft.SingleAppMode = singleApp.Checked;
+            };
+            toolTip.SetToolTip(singleApp, "Always hide other apps when switching.");
+
+            panel.Controls.Add(assignLetter);
+            panel.Controls.Add(forceCycle);
+            panel.Controls.Add(hideOthers);
+            panel.Controls.Add(singleApp);
+
+            box.Controls.Add(panel);
+            return box;
+        }
+
+        private GroupBox BuildFocusSection()
+        {
+            var box = CreateGroupBox("Focus Behavior");
+            var table = CreateTwoColumnTable();
+
+            var appFocusLabel = CreateLabel("App window focus");
+            var appFocus = CreateComboBox(new[] { "All windows", "Main window" });
+            appFocus.SelectedIndex = draft.AppWindowFocus == WindowFocusBehavior.AllWindows ? 0 : 1;
+            appFocus.SelectedIndexChanged += (s, e) =>
+            {
+                draft.AppWindowFocus = appFocus.SelectedIndex == 0
+                    ? WindowFocusBehavior.AllWindows
+                    : WindowFocusBehavior.MainWindow;
+            };
+
+            var alreadyFocusedLabel = CreateLabel("When already focused");
+            var alreadyFocused = CreateComboBox(new[] { "Hide app", "Cycle apps", "Cycle windows" });
+            alreadyFocused.SelectedIndex = (int)draft.WhenAlreadyFocusedBehavior;
+            alreadyFocused.SelectedIndexChanged += (s, e) =>
+            {
+                draft.WhenAlreadyFocusedBehavior = (WhenAlreadyFocused)alreadyFocused.SelectedIndex;
+            };
+
+            AddRow(table, appFocusLabel, appFocus);
+            AddRow(table, alreadyFocusedLabel, alreadyFocused);
+
+            box.Controls.Add(table);
+            return box;
+        }
+
+        private GroupBox BuildKeyConfigSection()
+        {
+            var box = CreateGroupBox("Key Configuration");
+            var table = CreateTwoColumnTable();
+            box.Padding = new Padding(12, 12, 12, 26);
+
+            var appsKeyLabel = CreateLabel("Apps modifier key");
+            var appsKey = CreateComboBox(Enum.GetNames(typeof(ModifierKey)));
+            appsKey.SelectedItem = draft.AppsModifierKey.ToString();
+            appsKey.SelectedIndexChanged += (s, e) =>
+            {
+                if (Enum.TryParse(appsKey.SelectedItem?.ToString(), out ModifierKey key))
+                {
+                    draft.AppsModifierKey = key;
+                }
+            };
+
+            var minimizeScopeLabel = CreateLabel("Minimize key hides");
+            var minimizeScope = CreateComboBox(new[] { "All apps", "Focused app" });
+            minimizeScope.SelectedIndex = draft.MinimizeKeyHides == MinimizeScope.AllApps ? 0 : 1;
+            minimizeScope.SelectedIndexChanged += (s, e) =>
+            {
+                draft.MinimizeKeyHides = minimizeScope.SelectedIndex == 0 ? MinimizeScope.AllApps : MinimizeScope.FocusedApp;
+            };
+
+            var minimizeAffectsLabel = CreateLabel("Minimize key affects");
+            var minimizeAffects = CreateComboBox(new[] { "All windows", "Focused window" });
+            minimizeAffects.SelectedIndex = draft.MinimizeKeyAffects == MinimizeAffects.AllWindows ? 0 : 1;
+            minimizeAffects.SelectedIndexChanged += (s, e) =>
+            {
+                draft.MinimizeKeyAffects = minimizeAffects.SelectedIndex == 0
+                    ? MinimizeAffects.AllWindows
+                    : MinimizeAffects.FocusedWindow;
+            };
+
+            var hideKeyLabel = CreateLabel("Hide/Minimize key");
+            var hideKey = CreateSingleCharTextBox(draft.HideMinimizeKey);
+            hideKey.TextChanged += (s, e) =>
+            {
+                if (TryGetChar(hideKey.Text, out char value))
+                {
+                    draft.HideMinimizeKey = value;
+                }
+            };
+
+            var menuKeyLabel = CreateLabel("Menu/Actions key");
+            var menuKey = CreateSingleCharTextBox(draft.MenuActionsKey);
+            menuKey.TextChanged += (s, e) =>
+            {
+                if (TryGetChar(menuKey.Text, out char value))
+                {
+                    draft.MenuActionsKey = value;
+                }
+            };
+
+            AddRow(table, appsKeyLabel, appsKey);
+            AddRow(table, minimizeScopeLabel, minimizeScope);
+            AddRow(table, minimizeAffectsLabel, minimizeAffects);
+            AddRow(table, hideKeyLabel, hideKey);
+            AddRow(table, menuKeyLabel, menuKey);
+
+            box.Controls.Add(table);
+            return box;
+        }
+
+        private GroupBox BuildAppShortcutsSection()
+        {
+            var box = CreateGroupBox("App Shortcuts");
+            var panel = CreateFlowPanel();
+            panel.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            panel.Padding = new Padding(0, 0, 0, 6);
+            box.Padding = new Padding(12, 12, 12, 18);
+
+            var desc = new Label
+            {
+                Text = "Assign custom letters to apps and exclude apps from switching.",
                 AutoSize = true
             };
-            contentPanel.Controls.Add(titleLabel);
-            currentY += 50;
 
-            // General Settings Section
-            BuildGeneralSettings();
-
-            // Hotkey Settings Section
-            BuildHotkeySettings();
-
-            // Focus Behavior Section
-            BuildFocusBehavior();
-
-            // Key Configuration Section
-            BuildKeyConfiguration();
-
-            // App Management Section
-            BuildAppManagement();
-
-            // Captured Keys Section
-            BuildCapturedKeys();
-
-            // Set content panel height
-            contentPanel.AutoScrollMinSize = new Size(0, currentY + 20);
-        }
-
-        private void BuildGeneralSettings()
-        {
-            var settings = AppSettings.Instance;
-
-            // Launch at login
-            AddCheckboxOption("Launch at login", settings.LaunchAtLogin, (checked_) =>
-            {
-                settings.SetLaunchAtLogin(checked_);
-            });
-
-            // Hide tray icon
-            AddCheckboxOption("Hide tray icon", settings.HideTrayIcon, (checked_) =>
-            {
-                settings.HideTrayIcon = checked_;
-                settings.Save();
-            });
-
-            // Exclude static apps
-            AddCheckboxOption("Exclude Static apps when cycling from Dynamic apps", settings.ExcludeStaticApps, (checked_) =>
-            {
-                settings.ExcludeStaticApps = checked_;
-                settings.Save();
-            });
-
-            currentY += 15;
-            AddSeparator();
-        }
-
-        private void BuildHotkeySettings()
-        {
-            var settings = AppSettings.Instance;
-
-            // Enable Assign Letter hotkey
-            AddCheckboxOption("Enable Assign Letter hotkey", settings.EnableAssignLetterHotkey, (checked_) =>
-            {
-                settings.EnableAssignLetterHotkey = checked_;
-                settings.Save();
-            }, "Add Alt to assign a letter to the focused app");
-
-            AddModifierKeyDisplay(new[] { "Shift", "Ctrl", "Alt", "_", "Alt", "Ctrl", "Shift" }, new[] { false, false, true, false, false, true, false });
-
-            // Enable Force Cycle hotkey
-            AddCheckboxOption("Enable Force Cycle hotkey", settings.EnableForceCycleHotkey, (checked_) =>
-            {
-                settings.EnableForceCycleHotkey = checked_;
-                settings.Save();
-            }, "Add Right Shift when focusing apps to cycle same letter apps");
-
-            AddModifierKeyDisplay(new[] { "Shift", "Ctrl", "Alt", "_", "Alt", "Ctrl", "Shift" }, new[] { false, false, false, false, false, false, true });
-
-            // Enable Hide Others on Focus
-            AddCheckboxOption("Enable Hide Others on Focus hotkey", settings.EnableHideOthersOnFocus, (checked_) =>
-            {
-                settings.EnableHideOthersOnFocus = checked_;
-                settings.Save();
-            }, "Add Left Shift when focusing apps to hide unfocused apps");
-
-            AddModifierKeyDisplay(new[] { "Shift", "Ctrl", "Alt", "_", "Alt", "Ctrl", "Shift" }, new[] { true, false, false, false, false, false, false });
-
-            // Single App Mode (indented)
-            AddCheckboxOption("Single App Mode", settings.SingleAppMode, (checked_) =>
-            {
-                settings.SingleAppMode = checked_;
-                settings.Save();
-            }, "Hide unfocused apps without having to add Left Shift", 40);
-
-            currentY += 15;
-            AddSeparator();
-        }
-
-        private void BuildFocusBehavior()
-        {
-            var settings = AppSettings.Instance;
-
-            // App window focus behaviour
-            AddSegmentedControl(
-                "App window focus behaviour",
-                "Which windows of the app to bring to front",
-                new[] { "All windows", "Main window" },
-                settings.AppWindowFocus == WindowFocusBehavior.AllWindows ? 0 : 1,
-                (index) =>
-                {
-                    settings.AppWindowFocus = index == 0 ? WindowFocusBehavior.AllWindows : WindowFocusBehavior.MainWindow;
-                    settings.Save();
-                });
-
-            // When already focused
-            AddSegmentedControl(
-                "When already focused",
-                "",
-                new[] { "Hide app", "Cycle apps", "Cycle windows" },
-                (int)settings.WhenAlreadyFocusedBehavior,
-                (index) =>
-                {
-                    settings.WhenAlreadyFocusedBehavior = (WhenAlreadyFocused)index;
-                    settings.Save();
-                });
-
-            currentY += 15;
-            AddSeparator();
-        }
-
-        private void BuildKeyConfiguration()
-        {
-            var settings = AppSettings.Instance;
-
-            // Apps key with modifier selector
-            AddModifierKeySelector("Apps key", settings.AppsModifierKey, (modifier) =>
-            {
-                settings.AppsModifierKey = modifier;
-                settings.Save();
-            });
-
-            // Minimize key hides
-            AddSegmentedControl(
-                "Minimize key hides",
-                "",
-                new[] { "All apps", "Focused app" },
-                settings.MinimizeKeyHides == MinimizeScope.AllApps ? 0 : 1,
-                (index) =>
-                {
-                    settings.MinimizeKeyHides = index == 0 ? MinimizeScope.AllApps : MinimizeScope.FocusedApp;
-                    settings.Save();
-                }, 40);
-
-            // Minimize key affects
-            AddSegmentedControl(
-                "Minimize key affects",
-                "",
-                new[] { "All windows", "Focused window" },
-                settings.MinimizeKeyAffects == MinimizeAffects.AllWindows ? 0 : 1,
-                (index) =>
-                {
-                    settings.MinimizeKeyAffects = index == 0 ? MinimizeAffects.AllWindows : MinimizeAffects.FocusedWindow;
-                    settings.Save();
-                }, 40);
-
-            currentY += 10;
-
-            // Hide/Minimize key
-            AddKeySelector("Hide/Minimize key", "Used for hiding apps and minimizing windows", settings.HideMinimizeKey, (key) =>
-            {
-                settings.HideMinimizeKey = key;
-                settings.Save();
-            });
-
-            // Menu/Actions key
-            AddKeySelector("Menu/Actions key", "Used for showing this menu and assigning window actions", settings.MenuActionsKey, (key) =>
-            {
-                settings.MenuActionsKey = key;
-                settings.Save();
-            });
-
-            currentY += 15;
-            AddSeparator();
-        }
-
-        private void BuildAppManagement()
-        {
-            // Header
-            var headerLabel = new Label
-            {
-                Text = "App Shortcuts",
-                Font = new Font("Segoe UI", 14f, FontStyle.Bold),
-                ForeColor = TextColor,
-                Location = new Point(20, currentY),
-                AutoSize = true
-            };
-            contentPanel.Controls.Add(headerLabel);
-
-            // Manage Apps button on the right
-            var manageButton = new Button
+            var button = new Button
             {
                 Text = "Manage Apps...",
-                Size = new Size(120, 30),
-                Location = new Point(contentPanel.Width - 150, currentY - 3),
-                BackColor = Color.FromArgb(70, 130, 180),
-                ForeColor = TextColor,
-                FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI", 9f),
-                Anchor = AnchorStyles.Top | AnchorStyles.Right,
-                Cursor = Cursors.Hand
+                AutoSize = true,
+                Padding = new Padding(10, 4, 10, 4),
+                MinimumSize = new Size(170, 32)
             };
-            manageButton.FlatAppearance.BorderSize = 0;
-            manageButton.Click += (s, e) =>
+            button.Margin = new Padding(0, 6, 0, 6);
+
+            button.Click += (s, e) =>
             {
-                using (var dialog = new AppManagementDialog(appManager))
+                using (var dialog = new AppManagementDialog(appManager, draft))
                 {
                     dialog.ShowDialog(this);
                 }
             };
-            contentPanel.Controls.Add(manageButton);
 
-            currentY += 25;
-
-            var subLabel = new Label
-            {
-                Text = "Assign custom letters to apps and exclude apps from switching",
-                Font = new Font("Segoe UI", 9f),
-                ForeColor = SubTextColor,
-                Location = new Point(20, currentY),
-                AutoSize = true
-            };
-            contentPanel.Controls.Add(subLabel);
-
-            currentY += 30;
-            AddSeparator();
+            panel.Controls.Add(desc);
+            panel.Controls.Add(button);
+            box.Controls.Add(panel);
+            return box;
         }
 
-        private void BuildCapturedKeys()
+        private GroupBox BuildCapturedKeysSection()
         {
-            var settings = AppSettings.Instance;
+            var box = CreateGroupBox("Captured Keys");
+            var panel = CreateFlowPanel();
 
-            // Header
-            var headerLabel = new Label
+            var desc = new Label
             {
-                Text = "Captured keys",
-                Font = new Font("Segoe UI", 14f, FontStyle.Bold),
-                ForeColor = TextColor,
-                Location = new Point(20, currentY),
+                Text = "Disable keys to prevent them from being captured by rcmd.",
                 AutoSize = true
             };
-            contentPanel.Controls.Add(headerLabel);
-            currentY += 25;
 
-            var subLabel = new Label
+            int listHeight = draft.SettingsUiScale switch
             {
-                Text = "Here you can disable keys to prevent them from being captured by rcmd",
-                Font = new Font("Segoe UI", 9f),
-                ForeColor = SubTextColor,
-                Location = new Point(20, currentY),
-                AutoSize = true
-            };
-            contentPanel.Controls.Add(subLabel);
-            currentY += 30;
-
-            // Keyboard rows
-            string[] row1 = { "`", "1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "=" };
-            string[] row2 = { "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "[", "]" };
-            string[] row3 = { "A", "S", "D", "F", "G", "H", "J", "K", "L", ";", "'", "\\" };
-            string[] row4 = { "Z", "X", "C", "V", "B", "N", "M", ",", ".", "/" };
-
-            AddKeyboardRow(row1, 20);
-            AddKeyboardRow(row2, 35);
-            AddKeyboardRow(row3, 35);
-            AddKeyboardRow(row4, 50);
-
-            currentY += 20;
-        }
-
-        private void AddCheckboxOption(string text, bool isChecked, Action<bool> onChange, string? subText = null, int indent = 0)
-        {
-            var checkbox = new RoundCheckBox
-            {
-                Text = text,
-                Checked = isChecked,
-                Location = new Point(20 + indent, currentY),
-                ForeColor = TextColor,
-                Font = new Font("Segoe UI", 10f, subText == null ? FontStyle.Regular : FontStyle.Bold)
-            };
-            // Set size after setting text and font
-            checkbox.Size = checkbox.GetPreferredSize(Size.Empty);
-            checkbox.CheckedChanged += (s, e) => onChange(checkbox.Checked);
-            contentPanel.Controls.Add(checkbox);
-            currentY += Math.Max(28, checkbox.Height + 4);
-
-            if (subText != null)
-            {
-                var subLabel = new Label
-                {
-                    Text = subText,
-                    ForeColor = SubTextColor,
-                    Location = new Point(50 + indent, currentY - 8),
-                    AutoSize = true,
-                    Font = new Font("Segoe UI", 8.5f)
-                };
-                contentPanel.Controls.Add(subLabel);
-                currentY += 18;
-            }
-        }
-
-        private void AddModifierKeyDisplay(string[] keys, bool[] selected)
-        {
-            int x = 45;
-            int keyWidth = 42;
-            int keyHeight = 28;
-            int spacing = 3;
-
-            var panel = new Panel
-            {
-                Location = new Point(x, currentY),
-                Size = new Size(keys.Length * (keyWidth + spacing), keyHeight),
-                BackColor = Color.Transparent
+                UiScale.Small => 160,
+                UiScale.Medium => 220,
+                UiScale.Large => 280,
+                _ => 220
             };
 
-            for (int i = 0; i < keys.Length; i++)
+            var list = new CheckedListBox
             {
-                var keyLabel = new ModifierKeyLabel(keys[i], selected[i])
-                {
-                    Location = new Point(i * (keyWidth + spacing), 0),
-                    Size = new Size(keyWidth, keyHeight)
-                };
-                panel.Controls.Add(keyLabel);
+                CheckOnClick = true,
+                IntegralHeight = false,
+                Height = listHeight,
+                Dock = DockStyle.Top
+            };
+
+            var keyItems = BuildCapturedKeyItems();
+            foreach (var item in keyItems)
+            {
+                bool captured = !draft.DisabledKeys.Contains(char.ToUpper(item.KeyChar));
+                list.Items.Add(item, captured);
             }
 
-            contentPanel.Controls.Add(panel);
-            currentY += 40;
-        }
-
-        private void AddSegmentedControl(string label, string subText, string[] options, int selectedIndex, Action<int> onChange, int indent = 0)
-        {
-            var labelCtrl = new Label
+            list.ItemCheck += (s, e) =>
             {
-                Text = label,
-                Font = new Font("Segoe UI", 10f, FontStyle.Bold),
-                ForeColor = TextColor,
-                Location = new Point(20 + indent, currentY),
-                AutoSize = true
-            };
-            contentPanel.Controls.Add(labelCtrl);
+                if (e.Index < 0 || e.Index >= list.Items.Count)
+                    return;
 
-            if (!string.IsNullOrEmpty(subText))
-            {
-                currentY += 18;
-                var subLabel = new Label
+                object? rawItem = list.Items[e.Index];
+                if (rawItem is CapturedKeyItem keyItem)
                 {
-                    Text = subText,
-                    ForeColor = SubTextColor,
-                    Location = new Point(20 + indent, currentY),
-                    AutoSize = true,
-                    Font = new Font("Segoe UI", 8f)
-                };
-                contentPanel.Controls.Add(subLabel);
-            }
-
-            // Create segmented control on the right
-            var segmented = new SegmentedControl(options, selectedIndex, onChange)
-            {
-                Location = new Point(contentPanel.Width - 280 - indent, currentY - (string.IsNullOrEmpty(subText) ? 0 : 10)),
-                Anchor = AnchorStyles.Top | AnchorStyles.Right
-            };
-            contentPanel.Controls.Add(segmented);
-
-            currentY += 35;
-        }
-
-        private void AddModifierKeySelector(string label, ModifierKey currentKey, Action<ModifierKey> onChange)
-        {
-            var labelCtrl = new Label
-            {
-                Text = label,
-                Font = new Font("Segoe UI", 10f, FontStyle.Bold),
-                ForeColor = TextColor,
-                Location = new Point(20, currentY),
-                AutoSize = true
-            };
-            contentPanel.Controls.Add(labelCtrl);
-
-            // Modifier key display
-            string[] keys = { "Shift", "Ctrl", "Alt", "_", "Alt", "Ctrl", "Shift" };
-            var keyLabels = new ModifierKeyLabel[7];
-
-            // Map modifier key to index
-            int GetIndexForModifierKey(ModifierKey key) => key switch
-            {
-                ModifierKey.Shift => 0,
-                ModifierKey.Ctrl => 1,
-                ModifierKey.Alt => 2,
-                ModifierKey.RightAlt => 4,
-                ModifierKey.Win => 3,
-                _ => -1
-            };
-
-            int currentIndex = GetIndexForModifierKey(currentKey);
-
-            int x = 180;
-            int keyWidth = 42;
-            int keyHeight = 28;
-            int spacing = 3;
-
-            for (int i = 0; i < keys.Length; i++)
-            {
-                int index = i;
-                var keyLabel = new ModifierKeyLabel(keys[i], i == currentIndex, true)
-                {
-                    Location = new Point(x + i * (keyWidth + spacing), currentY - 3),
-                    Size = new Size(keyWidth, keyHeight)
-                };
-                keyLabels[i] = keyLabel;
-
-                keyLabel.Click += (s, e) =>
-                {
-                    // Skip spacer
-                    if (keys[index] == "_") return;
-
-                    ModifierKey newKey = index switch
+                    bool captured = e.NewValue == CheckState.Checked;
+                    char upper = char.ToUpper(keyItem.KeyChar);
+                    if (captured)
                     {
-                        0 => ModifierKey.Shift,
-                        1 => ModifierKey.Ctrl,
-                        2 => ModifierKey.Alt,
-                        4 => ModifierKey.RightAlt,
-                        5 => ModifierKey.Ctrl,
-                        6 => ModifierKey.Shift,
-                        _ => ModifierKey.None
-                    };
-
-                    // Update selection state for all labels
-                    for (int j = 0; j < keyLabels.Length; j++)
-                    {
-                        keyLabels[j].IsSelected = (j == index);
-                        keyLabels[j].Invalidate();
-                    }
-
-                    onChange(newKey);
-                };
-                contentPanel.Controls.Add(keyLabel);
-            }
-
-            currentY += 40;
-        }
-
-        private void AddKeySelector(string label, string subText, char currentKey, Action<char> onChange)
-        {
-            var labelCtrl = new Label
-            {
-                Text = label,
-                Font = new Font("Segoe UI", 10f, FontStyle.Bold),
-                ForeColor = TextColor,
-                Location = new Point(20, currentY),
-                AutoSize = true
-            };
-            contentPanel.Controls.Add(labelCtrl);
-
-            var subLabel = new Label
-            {
-                Text = subText,
-                ForeColor = SubTextColor,
-                Location = new Point(20, currentY + 18),
-                AutoSize = true,
-                Font = new Font("Segoe UI", 8f)
-            };
-            contentPanel.Controls.Add(subLabel);
-
-            // Key display button
-            var keyButton = new Button
-            {
-                Text = currentKey.ToString(),
-                Size = new Size(40, 30),
-                Location = new Point(contentPanel.Width - 80, currentY),
-                BackColor = ToggleBgColor,
-                ForeColor = TextColor,
-                FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI", 10f),
-                Anchor = AnchorStyles.Top | AnchorStyles.Right
-            };
-            keyButton.FlatAppearance.BorderColor = Color.FromArgb(80, 80, 80);
-
-            // Click handler to capture new key
-            keyButton.Click += (s, e) =>
-            {
-                var btn = (Button)s!;
-                string originalText = btn.Text;
-                Color originalBgColor = btn.BackColor;
-
-                btn.Text = "...";
-                btn.BackColor = AccentColor;
-
-                // Create temporary key handler
-                KeyEventHandler? keyHandler = null;
-                keyHandler = (sender, args) =>
-                {
-                    char? newKey = KeyCodeToChar(args.KeyCode);
-                    if (newKey.HasValue)
-                    {
-                        btn.Text = newKey.Value.ToString();
-                        onChange(newKey.Value);
+                        draft.DisabledKeys.Remove(upper);
                     }
                     else
                     {
-                        btn.Text = originalText; // Revert if invalid key
+                        draft.DisabledKeys.Add(upper);
                     }
-                    btn.BackColor = originalBgColor;
-                    this.KeyDown -= keyHandler;
-                    this.KeyPreview = false;
-                    args.Handled = true;
-                    args.SuppressKeyPress = true;
-                };
-
-                this.KeyPreview = true;
-                this.KeyDown += keyHandler;
-            };
-
-            contentPanel.Controls.Add(keyButton);
-
-            currentY += 50;
-        }
-
-        /// <summary>
-        /// Converts a KeyCode to a character for key selector.
-        /// </summary>
-        private static char? KeyCodeToChar(Keys keyCode)
-        {
-            // Letters
-            if (keyCode >= Keys.A && keyCode <= Keys.Z)
-                return (char)('A' + (keyCode - Keys.A));
-
-            // Numbers
-            if (keyCode >= Keys.D0 && keyCode <= Keys.D9)
-                return (char)('0' + (keyCode - Keys.D0));
-
-            // Special keys
-            return keyCode switch
-            {
-                Keys.OemMinus => '-',
-                Keys.Oemplus => '=',
-                Keys.OemOpenBrackets => '[',
-                Keys.OemCloseBrackets => ']',
-                Keys.OemSemicolon => ';',
-                Keys.OemQuotes => '\'',
-                Keys.Oemcomma => ',',
-                Keys.OemPeriod => '.',
-                Keys.OemQuestion => '/',
-                Keys.OemPipe => '\\',
-                Keys.Oemtilde => '`',
-                _ => null
-            };
-        }
-
-        private void AddKeyboardRow(string[] keys, int xOffset)
-        {
-            int keySize = 40;
-            int spacing = 5;
-
-            for (int i = 0; i < keys.Length; i++)
-            {
-                string key = keys[i];
-                bool isLetter = key.Length == 1 && char.IsLetter(key[0]);
-                bool isCaptured = !isLetter || AppSettings.Instance.IsKeyCaptured(key[0]);
-
-                var keyButton = new KeyboardKey(key, isCaptured, isLetter)
-                {
-                    Location = new Point(xOffset + i * (keySize + spacing), currentY),
-                    Size = new Size(keySize, keySize)
-                };
-
-                if (isLetter)
-                {
-                    keyButton.Click += (s, e) =>
-                    {
-                        var btn = (KeyboardKey)s!;
-                        btn.IsCaptured = !btn.IsCaptured;
-                        AppSettings.Instance.SetKeyCaptured(btn.KeyChar, btn.IsCaptured);
-                        btn.Invalidate();
-                    };
                 }
-
-                contentPanel.Controls.Add(keyButton);
-            }
-
-            currentY += keySize + spacing;
-        }
-
-        private void AddSeparator()
-        {
-            var separator = new Panel
-            {
-                Location = new Point(20, currentY),
-                Size = new Size(contentPanel.Width - 40, 1),
-                BackColor = Color.FromArgb(60, 60, 60),
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
             };
-            contentPanel.Controls.Add(separator);
-            currentY += 20;
-        }
-    }
 
-    // Custom round checkbox to match macOS style
-    public class RoundCheckBox : CheckBox
-    {
-        public RoundCheckBox()
-        {
-            this.SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
-            this.DoubleBuffered = true;
+            panel.Controls.Add(desc);
+            panel.Controls.Add(list);
+            box.Controls.Add(panel);
+            return box;
         }
 
-        protected override void OnPaint(PaintEventArgs e)
+        private List<CapturedKeyItem> BuildCapturedKeyItems()
         {
-            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            e.Graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
-            e.Graphics.Clear(this.Parent?.BackColor ?? Color.FromArgb(30, 30, 30));
+            var items = new List<CapturedKeyItem>();
 
-            int checkSize = 20;
-            var checkRect = new Rectangle(0, (this.Height - checkSize) / 2, checkSize, checkSize);
+            for (char c = 'A'; c <= 'Z'; c++)
+                items.Add(new CapturedKeyItem(c.ToString(), c));
 
-            // Draw circle
-            using (var brush = new SolidBrush(this.Checked ? Color.FromArgb(100, 149, 237) : Color.FromArgb(60, 60, 60)))
+            for (char c = '0'; c <= '9'; c++)
+                items.Add(new CapturedKeyItem(c.ToString(), c));
+
+            string extra = "-=[];\\',./`";
+            foreach (var c in extra)
+                items.Add(new CapturedKeyItem(c.ToString(), c));
+
+            return items;
+        }
+
+        private static bool TryGetChar(string text, out char value)
+        {
+            value = '\0';
+            if (string.IsNullOrWhiteSpace(text))
+                return false;
+
+            value = text.Trim()[0];
+            return true;
+        }
+
+        private static GroupBox CreateGroupBox(string title)
+        {
+            return new GroupBox
             {
-                e.Graphics.FillEllipse(brush, checkRect);
-            }
+                Text = title,
+                Dock = DockStyle.Top,
+                AutoSize = true,
+                Padding = new Padding(12)
+            };
+        }
 
-            // Draw checkmark if checked
-            if (this.Checked)
+        private static FlowLayoutPanel CreateFlowPanel()
+        {
+            return new FlowLayoutPanel
             {
-                using (var pen = new Pen(Color.White, 2f))
+                Dock = DockStyle.Top,
+                AutoSize = true,
+                FlowDirection = FlowDirection.TopDown,
+                WrapContents = false
+            };
+        }
+
+        private static TableLayoutPanel CreateTwoColumnTable()
+        {
+            var table = new TableLayoutPanel
+            {
+                Dock = DockStyle.Top,
+                AutoSize = true,
+                ColumnCount = 2,
+                RowCount = 1,
+                Padding = new Padding(0),
+                AutoSizeMode = AutoSizeMode.GrowAndShrink
+            };
+
+            table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+            table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+            return table;
+        }
+
+        private static void AddRow(TableLayoutPanel table, Control left, Control right)
+        {
+            int row = table.RowCount++;
+            table.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            left.Margin = new Padding(0, 0, 8, 8);
+            right.Margin = new Padding(0, 0, 0, 8);
+            left.Dock = DockStyle.Fill;
+            right.Dock = DockStyle.Fill;
+            table.Controls.Add(left, 0, row);
+            table.Controls.Add(right, 1, row);
+        }
+
+        private static CheckBox CreateCheckBox(string text, bool isChecked, EventHandler onChanged)
+        {
+            var checkbox = new CheckBox
+            {
+                Text = text,
+                AutoSize = true,
+                Checked = isChecked
+            };
+            checkbox.CheckedChanged += onChanged;
+            return checkbox;
+        }
+
+        private static Label CreateLabel(string text)
+        {
+            return new Label
+            {
+                Text = text,
+                AutoSize = true,
+                TextAlign = ContentAlignment.MiddleLeft
+            };
+        }
+
+        private static ComboBox CreateComboBox(IEnumerable<string> items)
+        {
+            var box = new NoScrollComboBox
+            {
+                DropDownStyle = ComboBoxStyle.DropDownList
+            };
+            box.Items.AddRange(items.Cast<object>().ToArray());
+            UiTheme.ApplyComboBox(box);
+            return box;
+        }
+
+        private static TextBox CreateSingleCharTextBox(char value)
+        {
+            var textBox = new TextBox
+            {
+                Width = 60,
+                MaxLength = 1,
+                Text = value.ToString()
+            };
+
+            textBox.KeyPress += (s, e) =>
+            {
+                if (!char.IsControl(e.KeyChar) && e.KeyChar != '\b')
                 {
-                    pen.StartCap = LineCap.Round;
-                    pen.EndCap = LineCap.Round;
-                    pen.LineJoin = LineJoin.Round;
-                    var points = new Point[]
-                    {
-                        new Point(checkRect.X + 5, checkRect.Y + checkSize / 2),
-                        new Point(checkRect.X + checkSize / 2 - 1, checkRect.Y + checkSize - 6),
-                        new Point(checkRect.X + checkSize - 5, checkRect.Y + 6)
-                    };
-                    e.Graphics.DrawLines(pen, points);
+                    e.KeyChar = char.ToUpper(e.KeyChar);
                 }
-            }
-
-            // Draw text
-            using (var brush = new SolidBrush(this.ForeColor))
-            {
-                float textX = checkSize + 10;
-                float textY = (this.Height - e.Graphics.MeasureString(this.Text, this.Font).Height) / 2;
-                e.Graphics.DrawString(this.Text, this.Font, brush, textX, textY);
-            }
-        }
-
-        public override Size GetPreferredSize(Size proposedSize)
-        {
-            using (var g = this.CreateGraphics())
-            {
-                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
-                var textSize = g.MeasureString(this.Text, this.Font);
-                return new Size((int)(textSize.Width + 35), Math.Max(24, (int)(textSize.Height + 4)));
-            }
-        }
-
-        protected override void OnTextChanged(EventArgs e)
-        {
-            base.OnTextChanged(e);
-            this.Size = GetPreferredSize(Size.Empty);
-        }
-
-        protected override void OnFontChanged(EventArgs e)
-        {
-            base.OnFontChanged(e);
-            this.Size = GetPreferredSize(Size.Empty);
-        }
-    }
-
-    // Modifier key label for displaying key combinations
-    public class ModifierKeyLabel : Control
-    {
-        private string keyText;
-        private bool isClickable;
-
-        public bool IsSelected { get; set; }
-
-        public ModifierKeyLabel(string text, bool selected, bool clickable = false)
-        {
-            this.keyText = text;
-            this.IsSelected = selected;
-            this.isClickable = clickable;
-            this.DoubleBuffered = true;
-
-            if (clickable)
-            {
-                this.Cursor = Cursors.Hand;
-            }
-        }
-
-        protected override void OnPaint(PaintEventArgs e)
-        {
-            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            e.Graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
-
-            var rect = new Rectangle(0, 0, this.Width - 1, this.Height - 1);
-            var path = GetRoundedRect(rect, 5);
-
-            Color bgColor;
-            Color textColor;
-
-            if (keyText == "_")
-            {
-                bgColor = Color.FromArgb(40, 40, 40);
-                textColor = Color.FromArgb(60, 60, 60);
-            }
-            else if (IsSelected)
-            {
-                bgColor = Color.FromArgb(140, 110, 80);
-                textColor = Color.White;
-            }
-            else
-            {
-                bgColor = Color.FromArgb(60, 60, 60);
-                textColor = Color.FromArgb(150, 150, 150);
-            }
-
-            using (var brush = new SolidBrush(bgColor))
-            {
-                e.Graphics.FillPath(brush, path);
-            }
-
-            // Draw icon/symbol based on key type
-            string displayText = keyText switch
-            {
-                "Shift" => "\u21E7",  // ⇧
-                "Ctrl" => "^",
-                "Alt" => "\u2325",    // ⌥
-                "_" => "",
-                _ => keyText
             };
 
-            using (var brush = new SolidBrush(textColor))
-            using (var font = new Font("Segoe UI Symbol", 10f))
+            return textBox;
+        }
+
+        private void ApplyUiScale(UiScale scale)
+        {
+            var baseFont = SystemFonts.MessageBoxFont ?? SystemFonts.DefaultFont;
+            float baseSize = baseFont.Size;
+            float fontSize = scale switch
             {
-                var format = new StringFormat
+                UiScale.Small => baseSize,
+                UiScale.Medium => baseSize + 1f,
+                UiScale.Large => baseSize + 2f,
+                _ => baseSize + 1f
+            };
+
+            Font = new Font(baseFont.FontFamily, fontSize, FontStyle.Regular);
+
+            ClientSize = scale switch
+            {
+                UiScale.Small => new Size(980, 800),
+                UiScale.Medium => new Size(1100, 860),
+                UiScale.Large => new Size(1260, 940),
+                _ => new Size(1100, 860)
+            };
+
+            int basePadding = scale switch
+            {
+                UiScale.Small => 16,
+                UiScale.Medium => 18,
+                UiScale.Large => 20,
+                _ => 18
+            };
+
+            int footerHeight = footer?.Height ?? 64;
+            root.Padding = new Padding(basePadding, basePadding, basePadding, basePadding + footerHeight);
+
+            if (footer != null)
+            {
+                footer.Height = scale switch
                 {
-                    Alignment = StringAlignment.Center,
-                    LineAlignment = StringAlignment.Center
+                    UiScale.Small => 80,
+                    UiScale.Medium => 84,
+                    UiScale.Large => 90,
+                    _ => 84
                 };
-                e.Graphics.DrawString(displayText, font, brush, rect, format);
             }
+
+            UpdateSectionWidths();
         }
 
-        private GraphicsPath GetRoundedRect(Rectangle rect, int radius)
+        private void UpdateSectionWidths()
         {
-            var path = new GraphicsPath();
-            path.AddArc(rect.X, rect.Y, radius * 2, radius * 2, 180, 90);
-            path.AddArc(rect.Right - radius * 2, rect.Y, radius * 2, radius * 2, 270, 90);
-            path.AddArc(rect.Right - radius * 2, rect.Bottom - radius * 2, radius * 2, radius * 2, 0, 90);
-            path.AddArc(rect.X, rect.Bottom - radius * 2, radius * 2, radius * 2, 90, 90);
-            path.CloseFigure();
-            return path;
-        }
-    }
-
-    // Segmented control for toggle options
-    public class SegmentedControl : Control
-    {
-        private string[] options;
-        private int selectedIndex;
-        private Action<int> onChange;
-
-        public SegmentedControl(string[] options, int selectedIndex, Action<int> onChange)
-        {
-            this.options = options;
-            this.selectedIndex = selectedIndex;
-            this.onChange = onChange;
-            this.Size = new Size(options.Length * 90, 30);
-            this.DoubleBuffered = true;
-            this.Cursor = Cursors.Hand;
+            UpdateColumnWidths(leftColumn);
+            UpdateColumnWidths(rightColumn);
         }
 
-        protected override void OnPaint(PaintEventArgs e)
+        private static void UpdateColumnWidths(Control column)
         {
-            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            e.Graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
-
-            int segmentWidth = this.Width / options.Length;
-
-            using (var font = new Font("Segoe UI", 9f))
+            int width = column.ClientSize.Width;
+            foreach (Control child in column.Controls)
             {
-                for (int i = 0; i < options.Length; i++)
+                int targetWidth = Math.Max(0, width - 12);
+                child.Width = targetWidth;
+
+                if (child is GroupBox groupBox)
                 {
-                    var rect = new Rectangle(i * segmentWidth, 0, segmentWidth, this.Height);
-                    var path = GetSegmentPath(rect, 5, i == 0, i == options.Length - 1);
-
-                    Color bgColor = i == selectedIndex ? Color.FromArgb(80, 80, 80) : Color.FromArgb(50, 50, 50);
-                    Color textColor = i == selectedIndex ? Color.White : Color.FromArgb(140, 140, 140);
-
-                    using (var brush = new SolidBrush(bgColor))
-                    {
-                        e.Graphics.FillPath(brush, path);
-                    }
-
-                    using (var brush = new SolidBrush(textColor))
-                    {
-                        var format = new StringFormat
-                        {
-                            Alignment = StringAlignment.Center,
-                            LineAlignment = StringAlignment.Center
-                        };
-                        e.Graphics.DrawString(options[i], font, brush, rect, format);
-                    }
+                    groupBox.PerformLayout();
+                    int preferredHeight = groupBox.GetPreferredSize(new Size(targetWidth, 0)).Height;
+                    groupBox.Height = preferredHeight + 20;
                 }
             }
         }
 
-        protected override void OnMouseClick(MouseEventArgs e)
+        private class CapturedKeyItem
         {
-            int segmentWidth = this.Width / options.Length;
-            int clickedIndex = e.X / segmentWidth;
+            public string Label { get; }
+            public char KeyChar { get; }
 
-            if (clickedIndex >= 0 && clickedIndex < options.Length && clickedIndex != selectedIndex)
+            public CapturedKeyItem(string label, char keyChar)
             {
-                selectedIndex = clickedIndex;
-                onChange(selectedIndex);
-                this.Invalidate();
-            }
-        }
-
-        private GraphicsPath GetSegmentPath(Rectangle rect, int radius, bool isFirst, bool isLast)
-        {
-            var path = new GraphicsPath();
-
-            if (isFirst)
-            {
-                path.AddArc(rect.X, rect.Y, radius * 2, radius * 2, 180, 90);
-            }
-            else
-            {
-                path.AddLine(rect.X, rect.Y, rect.X, rect.Y);
+                Label = label;
+                KeyChar = keyChar;
             }
 
-            if (isLast)
-            {
-                path.AddArc(rect.Right - radius * 2, rect.Y, radius * 2, radius * 2, 270, 90);
-                path.AddArc(rect.Right - radius * 2, rect.Bottom - radius * 2, radius * 2, radius * 2, 0, 90);
-            }
-            else
-            {
-                path.AddLine(rect.Right, rect.Y, rect.Right, rect.Bottom);
-            }
-
-            if (isFirst)
-            {
-                path.AddArc(rect.X, rect.Bottom - radius * 2, radius * 2, radius * 2, 90, 90);
-            }
-            else
-            {
-                path.AddLine(rect.X, rect.Bottom, rect.X, rect.Y);
-            }
-
-            path.CloseFigure();
-            return path;
+            public override string ToString() => Label;
         }
     }
 
-    // Keyboard key button for captured keys display
-    public class KeyboardKey : Control
-    {
-        public string KeyText { get; }
-        public char KeyChar => KeyText.Length == 1 ? KeyText[0] : '\0';
-        public bool IsCaptured { get; set; }
-        public bool IsClickable { get; }
-
-        public KeyboardKey(string keyText, bool isCaptured, bool isClickable)
-        {
-            this.KeyText = keyText;
-            this.IsCaptured = isCaptured;
-            this.IsClickable = isClickable;
-            this.DoubleBuffered = true;
-
-            if (isClickable)
-            {
-                this.Cursor = Cursors.Hand;
-            }
-        }
-
-        protected override void OnPaint(PaintEventArgs e)
-        {
-            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            e.Graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
-
-            var rect = new Rectangle(0, 0, this.Width - 1, this.Height - 1);
-            var path = GetRoundedRect(rect, 6);
-
-            Color bgColor;
-            Color textColor;
-
-            if (!IsClickable)
-            {
-                bgColor = Color.FromArgb(50, 50, 50);
-                textColor = Color.FromArgb(100, 100, 100);
-            }
-            else if (IsCaptured)
-            {
-                bgColor = Color.FromArgb(90, 90, 90);
-                textColor = Color.White;
-            }
-            else
-            {
-                bgColor = Color.FromArgb(45, 45, 45);
-                textColor = Color.FromArgb(80, 80, 80);
-            }
-
-            using (var brush = new SolidBrush(bgColor))
-            {
-                e.Graphics.FillPath(brush, path);
-            }
-
-            using (var brush = new SolidBrush(textColor))
-            using (var font = new Font("Segoe UI", 11f, FontStyle.Bold))
-            {
-                var format = new StringFormat
-                {
-                    Alignment = StringAlignment.Center,
-                    LineAlignment = StringAlignment.Center
-                };
-                e.Graphics.DrawString(KeyText, font, brush, rect, format);
-            }
-        }
-
-        private GraphicsPath GetRoundedRect(Rectangle rect, int radius)
-        {
-            var path = new GraphicsPath();
-            path.AddArc(rect.X, rect.Y, radius * 2, radius * 2, 180, 90);
-            path.AddArc(rect.Right - radius * 2, rect.Y, radius * 2, radius * 2, 270, 90);
-            path.AddArc(rect.Right - radius * 2, rect.Bottom - radius * 2, radius * 2, radius * 2, 0, 90);
-            path.AddArc(rect.X, rect.Bottom - radius * 2, radius * 2, radius * 2, 90, 90);
-            path.CloseFigure();
-            return path;
-        }
-    }
-
-    // Keep the LetterInputDialog for future use
     public class LetterInputDialog : Form
     {
-        private TextBox letterInput;
-        private Button okButton;
-        private Button cancelButton;
-        private Button resetButton;
-        private Label promptLabel;
+        private readonly TextBox letterInput;
+        private readonly Button okButton;
+        private readonly Button cancelButton;
+        private readonly Button resetButton;
+        private readonly Label promptLabel;
+        private readonly AppSettings settings;
 
         public char? SelectedLetter { get; private set; }
 
-        public LetterInputDialog(string processName)
+        public LetterInputDialog(string processName, AppSettings settings)
         {
-            this.Text = "Set Shortcut Letter";
-            this.Size = new Size(320, 160);
-            this.StartPosition = FormStartPosition.CenterParent;
-            this.FormBorderStyle = FormBorderStyle.FixedDialog;
-            this.MaximizeBox = false;
-            this.MinimizeBox = false;
-            this.BackColor = Color.FromArgb(30, 30, 30);
-            this.ForeColor = Color.White;
+            this.settings = settings;
+            Text = "Set Shortcut Letter";
+            StartPosition = FormStartPosition.CenterParent;
+            FormBorderStyle = FormBorderStyle.FixedDialog;
+            MaximizeBox = false;
+            MinimizeBox = false;
+            AutoScaleMode = AutoScaleMode.Dpi;
+            Font = SystemFonts.MessageBoxFont;
+            ClientSize = new Size(320, 150);
 
-            char currentLetter = AppSettings.Instance.GetLetterForProcess(processName);
+            char currentLetter = settings.GetLetterForProcess(processName);
 
             promptLabel = new Label
             {
                 Text = $"Enter shortcut letter for {processName}:",
-                Location = new Point(12, 15),
-                Size = new Size(280, 20),
-                ForeColor = Color.FromArgb(200, 200, 200)
+                Location = new Point(12, 12),
+                Size = new Size(296, 20)
             };
-            this.Controls.Add(promptLabel);
+            Controls.Add(promptLabel);
 
             letterInput = new TextBox
             {
@@ -1055,58 +684,48 @@ namespace RcmdWindows
                 Size = new Size(50, 25),
                 MaxLength = 1,
                 Text = currentLetter.ToString(),
-                BackColor = Color.FromArgb(45, 45, 45),
-                ForeColor = Color.White,
-                Font = new Font("Segoe UI", 12f),
                 TextAlign = HorizontalAlignment.Center
             };
             letterInput.KeyPress += LetterInput_KeyPress;
-            this.Controls.Add(letterInput);
+            Controls.Add(letterInput);
 
             resetButton = new Button
             {
                 Text = "Reset",
                 Location = new Point(70, 38),
-                Size = new Size(70, 27),
-                BackColor = Color.FromArgb(60, 60, 60),
-                ForeColor = Color.White,
-                FlatStyle = FlatStyle.Flat
+                Size = new Size(70, 27)
             };
             resetButton.Click += (s, e) =>
             {
                 SelectedLetter = null;
-                this.DialogResult = DialogResult.OK;
-                this.Close();
+                DialogResult = DialogResult.OK;
+                Close();
             };
-            this.Controls.Add(resetButton);
+            Controls.Add(resetButton);
 
             okButton = new Button
             {
                 Text = "OK",
-                Location = new Point(135, 85),
+                Location = new Point(135, 95),
                 Size = new Size(75, 27),
-                BackColor = Color.FromArgb(70, 130, 180),
-                ForeColor = Color.White,
-                FlatStyle = FlatStyle.Flat,
                 DialogResult = DialogResult.OK
             };
             okButton.Click += OkButton_Click;
-            this.Controls.Add(okButton);
+            Controls.Add(okButton);
 
             cancelButton = new Button
             {
                 Text = "Cancel",
-                Location = new Point(216, 85),
+                Location = new Point(216, 95),
                 Size = new Size(75, 27),
-                BackColor = Color.FromArgb(60, 60, 60),
-                ForeColor = Color.White,
-                FlatStyle = FlatStyle.Flat,
                 DialogResult = DialogResult.Cancel
             };
-            this.Controls.Add(cancelButton);
+            Controls.Add(cancelButton);
 
-            this.AcceptButton = okButton;
-            this.CancelButton = cancelButton;
+            AcceptButton = okButton;
+            CancelButton = cancelButton;
+
+            UiTheme.Apply(this);
         }
 
         private void LetterInput_KeyPress(object? sender, KeyPressEventArgs e)
@@ -1126,74 +745,63 @@ namespace RcmdWindows
             if (!string.IsNullOrEmpty(letterInput.Text) && char.IsLetter(letterInput.Text[0]))
             {
                 SelectedLetter = char.ToUpper(letterInput.Text[0]);
-                this.DialogResult = DialogResult.OK;
+                DialogResult = DialogResult.OK;
             }
             else
             {
-                MessageBox.Show("Please enter a valid letter (A-Z).", "Invalid Input",
-                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                this.DialogResult = DialogResult.None;
+                MessageBox.Show(
+                    "Please enter a valid letter (A-Z).",
+                    "Invalid Input",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning
+                );
+                DialogResult = DialogResult.None;
             }
         }
     }
 
-    // App Management Dialog - for managing app shortcuts and exclusions
     public class AppManagementDialog : Form
     {
-        private ListView appListView;
-        private Button closeButton;
-        private Label instructionLabel;
-        private ApplicationManager appManager;
+        private readonly ListView appListView;
+        private readonly Button closeButton;
+        private readonly Label instructionLabel;
+        private readonly ApplicationManager appManager;
+        private readonly AppSettings settings;
         private bool isLoadingApps = false;
 
-        private static readonly Color BgColor = Color.FromArgb(30, 30, 30);
-        private static readonly Color ListBgColor = Color.FromArgb(45, 45, 45);
-        private static readonly Color TextColor = Color.White;
-
-        public AppManagementDialog(ApplicationManager appManager)
+        public AppManagementDialog(ApplicationManager appManager, AppSettings settings)
         {
             this.appManager = appManager;
-            InitializeForm();
-            LoadApps();
-        }
+            this.settings = settings;
 
-        private void InitializeForm()
-        {
-            this.Text = "Manage App Shortcuts";
-            this.Size = new Size(580, 500);
-            this.StartPosition = FormStartPosition.CenterParent;
-            this.FormBorderStyle = FormBorderStyle.FixedDialog;
-            this.MaximizeBox = false;
-            this.MinimizeBox = false;
-            this.BackColor = BgColor;
-            this.ForeColor = TextColor;
-            this.Font = new Font("Segoe UI", 9f);
+            Text = "Manage App Shortcuts";
+            StartPosition = FormStartPosition.CenterParent;
+            FormBorderStyle = FormBorderStyle.FixedDialog;
+            MaximizeBox = false;
+            MinimizeBox = false;
+            AutoScaleMode = AutoScaleMode.Dpi;
+            Font = SystemFonts.MessageBoxFont;
+            ClientSize = new Size(600, 520);
 
             instructionLabel = new Label
             {
                 Text = "Double-click to change shortcut letter. Use checkbox to enable/disable apps.",
-                Location = new Point(15, 15),
-                Size = new Size(540, 20),
-                ForeColor = Color.FromArgb(180, 180, 180),
-                Font = new Font("Segoe UI", 9f)
+                Location = new Point(12, 12),
+                Size = new Size(560, 20)
             };
-            this.Controls.Add(instructionLabel);
+            Controls.Add(instructionLabel);
 
             appListView = new ListView
             {
-                Location = new Point(15, 45),
-                Size = new Size(535, 360),
+                Location = new Point(12, 40),
+                Size = new Size(560, 410),
                 View = View.Details,
                 FullRowSelect = true,
                 GridLines = true,
-                CheckBoxes = true,
-                BackColor = ListBgColor,
-                ForeColor = TextColor,
-                BorderStyle = BorderStyle.FixedSingle,
-                Font = new Font("Segoe UI", 9f)
+                CheckBoxes = true
             };
 
-            appListView.Columns.Add("Enabled", 65, HorizontalAlignment.Center);
+            appListView.Columns.Add("Enabled", 70, HorizontalAlignment.Center);
             appListView.Columns.Add("Letter", 60, HorizontalAlignment.Center);
             appListView.Columns.Add("Application", 300, HorizontalAlignment.Left);
             appListView.Columns.Add("Status", 90, HorizontalAlignment.Center);
@@ -1201,21 +809,21 @@ namespace RcmdWindows
             appListView.DoubleClick += AppListView_DoubleClick;
             appListView.ItemChecked += AppListView_ItemChecked;
 
-            this.Controls.Add(appListView);
+            Controls.Add(appListView);
 
             closeButton = new Button
             {
                 Text = "Close",
-                Location = new Point(460, 420),
-                Size = new Size(90, 30),
-                BackColor = Color.FromArgb(70, 130, 180),
-                ForeColor = TextColor,
-                FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI", 9f)
+                Location = new Point(482, 465),
+                Size = new Size(90, 30)
             };
-            closeButton.FlatAppearance.BorderSize = 0;
-            closeButton.Click += (s, e) => this.Close();
-            this.Controls.Add(closeButton);
+            closeButton.Click += (s, e) => Close();
+            Controls.Add(closeButton);
+
+            UiTheme.Apply(this);
+            UiTheme.ApplyListView(appListView);
+
+            LoadApps();
         }
 
         private void LoadApps()
@@ -1224,9 +832,6 @@ namespace RcmdWindows
             appListView.Items.Clear();
 
             var windows = appManager.GetAllWindows();
-            var settings = AppSettings.Instance;
-
-            // Group by process name to get unique apps
             var uniqueApps = windows
                 .GroupBy(w => w.ProcessName, StringComparer.OrdinalIgnoreCase)
                 .Select(g => g.First())
@@ -1236,11 +841,14 @@ namespace RcmdWindows
             foreach (var app in uniqueApps)
             {
                 char letter = settings.GetLetterForProcess(app.ProcessName);
-                bool isExcluded = settings.IsExcluded(app.ProcessName);
+                bool isExcluded = settings.ExcludedProcesses.Contains(app.ProcessName);
                 bool hasCustomMapping = settings.ProcessLetterMappings.ContainsKey(app.ProcessName);
 
-                var item = new ListViewItem();
-                item.Checked = !isExcluded;
+                var item = new ListViewItem
+                {
+                    Checked = !isExcluded
+                };
+
                 item.SubItems.Add(letter.ToString());
                 item.SubItems.Add(app.ProcessName);
                 item.SubItems.Add(hasCustomMapping ? "Custom" : "Default");
@@ -1248,61 +856,267 @@ namespace RcmdWindows
 
                 if (isExcluded)
                 {
-                    item.ForeColor = Color.Gray;
+                    item.ForeColor = UiTheme.MutedText;
                 }
                 else if (hasCustomMapping)
                 {
-                    item.ForeColor = Color.FromArgb(100, 149, 237); // Cornflower blue
+                    item.ForeColor = UiTheme.Accent;
                 }
 
                 appListView.Items.Add(item);
             }
+
             isLoadingApps = false;
         }
 
         private void AppListView_ItemChecked(object? sender, ItemCheckedEventArgs e)
         {
-            if (isLoadingApps) return;
+            if (isLoadingApps)
+                return;
+
+            if (e.Item == null)
+                return;
 
             string processName = e.Item.Tag?.ToString() ?? "";
             bool enabled = e.Item.Checked;
 
-            AppSettings.Instance.SetExcluded(processName, !enabled);
-
-            // Update the row appearance
-            if (!enabled)
+            if (enabled)
             {
-                e.Item.ForeColor = Color.Gray;
+                settings.ExcludedProcesses.Remove(processName);
             }
             else
             {
-                bool hasCustomMapping = AppSettings.Instance.ProcessLetterMappings.ContainsKey(processName);
-                e.Item.ForeColor = hasCustomMapping ? Color.FromArgb(100, 149, 237) : Color.White;
+                settings.ExcludedProcesses.Add(processName);
+            }
+
+            if (!enabled)
+            {
+                e.Item.ForeColor = UiTheme.MutedText;
+            }
+            else
+            {
+                bool hasCustomMapping = settings.ProcessLetterMappings.ContainsKey(processName);
+                e.Item.ForeColor = hasCustomMapping ? UiTheme.Accent : UiTheme.Text;
             }
         }
 
         private void AppListView_DoubleClick(object? sender, EventArgs e)
         {
-            if (appListView.SelectedItems.Count == 0) return;
+            if (appListView.SelectedItems.Count == 0)
+                return;
 
             var selectedItem = appListView.SelectedItems[0];
             string processName = selectedItem.Tag?.ToString() ?? "";
 
-            using (var dialog = new LetterInputDialog(processName))
+            using (var dialog = new LetterInputDialog(processName, settings))
             {
                 if (dialog.ShowDialog(this) == DialogResult.OK)
                 {
                     if (dialog.SelectedLetter.HasValue)
                     {
-                        AppSettings.Instance.SetLetterForProcess(processName, dialog.SelectedLetter.Value);
+                        settings.ProcessLetterMappings[processName] = char.ToUpper(dialog.SelectedLetter.Value);
                     }
                     else
                     {
-                        AppSettings.Instance.RemoveMapping(processName);
+                        settings.ProcessLetterMappings.Remove(processName);
                     }
                     LoadApps();
                 }
             }
+        }
+    }
+
+    internal static class UiTheme
+    {
+        public static readonly Color Bg = Color.FromArgb(24, 24, 24);
+        public static readonly Color Panel = Color.FromArgb(32, 32, 32);
+        public static readonly Color Control = Color.FromArgb(45, 45, 45);
+        public static readonly Color Input = Color.FromArgb(38, 38, 38);
+        public static readonly Color Border = Color.FromArgb(70, 70, 70);
+        public static readonly Color Text = Color.FromArgb(230, 230, 230);
+        public static readonly Color MutedText = Color.FromArgb(160, 160, 160);
+        public static readonly Color Accent = Color.FromArgb(96, 160, 240);
+
+        public static void Apply(Form form)
+        {
+            form.BackColor = Bg;
+            form.ForeColor = Text;
+            ApplyToControls(form.Controls);
+        }
+
+        public static void ApplyComboBox(ComboBox box)
+        {
+            box.BackColor = Input;
+            box.ForeColor = Text;
+            box.FlatStyle = FlatStyle.Flat;
+            box.DrawMode = DrawMode.OwnerDrawFixed;
+            box.DrawItem -= ComboBox_DrawItem;
+            box.DrawItem += ComboBox_DrawItem;
+        }
+
+        public static void ApplyListView(ListView listView)
+        {
+            listView.BackColor = Input;
+            listView.ForeColor = Text;
+            listView.BorderStyle = BorderStyle.FixedSingle;
+            listView.OwnerDraw = true;
+            listView.DrawColumnHeader -= ListView_DrawColumnHeader;
+            listView.DrawColumnHeader += ListView_DrawColumnHeader;
+            listView.DrawItem -= ListView_DrawItem;
+            listView.DrawItem += ListView_DrawItem;
+            listView.DrawSubItem -= ListView_DrawSubItem;
+            listView.DrawSubItem += ListView_DrawSubItem;
+        }
+
+        private static void ApplyToControls(Control.ControlCollection controls)
+        {
+            foreach (Control control in controls)
+            {
+                switch (control)
+                {
+                    case GroupBox groupBox:
+                        groupBox.ForeColor = Text;
+                        groupBox.BackColor = Panel;
+                        break;
+                    case TableLayoutPanel table:
+                        table.BackColor = Bg;
+                        break;
+                    case FlowLayoutPanel flow:
+                        flow.BackColor = Bg;
+                        break;
+                    case Panel panel:
+                        panel.BackColor = Bg;
+                        break;
+                    case Label label:
+                        label.ForeColor = Text;
+                        label.BackColor = label.Parent?.BackColor ?? Bg;
+                        break;
+                    case CheckBox checkBox:
+                        checkBox.ForeColor = Text;
+                        checkBox.BackColor = checkBox.Parent?.BackColor ?? Bg;
+                        break;
+                    case Button button:
+                        button.BackColor = Control;
+                        button.ForeColor = Text;
+                        button.FlatStyle = FlatStyle.Flat;
+                        button.FlatAppearance.BorderColor = Border;
+                        break;
+                    case TextBox textBox:
+                        textBox.BackColor = Input;
+                        textBox.ForeColor = Text;
+                        textBox.BorderStyle = BorderStyle.FixedSingle;
+                        break;
+                    case ComboBox comboBox:
+                        ApplyComboBox(comboBox);
+                        break;
+                    case CheckedListBox checkedListBox:
+                        checkedListBox.BackColor = Input;
+                        checkedListBox.ForeColor = Text;
+                        checkedListBox.BorderStyle = BorderStyle.FixedSingle;
+                        break;
+                    case ListView listView:
+                        ApplyListView(listView);
+                        break;
+                }
+
+                if (control.HasChildren)
+                {
+                    ApplyToControls(control.Controls);
+                }
+            }
+        }
+
+        private static void ComboBox_DrawItem(object? sender, DrawItemEventArgs e)
+        {
+            if (sender is not ComboBox box)
+                return;
+
+            e.DrawBackground();
+            bool isSelected = (e.State & DrawItemState.Selected) == DrawItemState.Selected;
+            Color bg = isSelected ? Accent : Input;
+            Color fg = Text;
+
+            using (var bgBrush = new SolidBrush(bg))
+            using (var textBrush = new SolidBrush(fg))
+            {
+                e.Graphics.FillRectangle(bgBrush, e.Bounds);
+                if (e.Index >= 0)
+                {
+                    object? item = box.Items[e.Index];
+                    string text = item?.ToString() ?? string.Empty;
+                    e.Graphics.DrawString(text, box.Font, textBrush, e.Bounds);
+                }
+            }
+
+            e.DrawFocusRectangle();
+        }
+
+        private static void ListView_DrawColumnHeader(object? sender, DrawListViewColumnHeaderEventArgs e)
+        {
+            if (e.Header == null || e.Font == null)
+                return;
+
+            using (var bg = new SolidBrush(Panel))
+            using (var textBrush = new SolidBrush(Text))
+            using (var pen = new Pen(Border))
+            {
+                e.Graphics.FillRectangle(bg, e.Bounds);
+                e.Graphics.DrawRectangle(pen, e.Bounds);
+                e.Graphics.DrawString(e.Header.Text, e.Font, textBrush, e.Bounds);
+            }
+        }
+
+        private static void ListView_DrawItem(object? sender, DrawListViewItemEventArgs e)
+        {
+            if (e.Item == null)
+                return;
+
+            bool isSelected = e.Item.Selected;
+            Color bg = isSelected ? Accent : Input;
+            using (var bgBrush = new SolidBrush(bg))
+            {
+                e.Graphics.FillRectangle(bgBrush, e.Bounds);
+            }
+        }
+
+        private static void ListView_DrawSubItem(object? sender, DrawListViewSubItemEventArgs e)
+        {
+            if (e.Item == null || e.SubItem == null)
+                return;
+
+            bool isSelected = e.Item.Selected;
+            Color fg = isSelected ? Color.White : e.Item.ForeColor;
+            using (var textBrush = new SolidBrush(fg))
+            {
+                Font font = e.SubItem.Font ?? e.Item.Font ?? SystemFonts.DefaultFont;
+                e.Graphics.DrawString(e.SubItem.Text, font, textBrush, e.Bounds);
+            }
+        }
+    }
+
+    internal sealed class NoScrollComboBox : ComboBox
+    {
+        private const int WM_MOUSEWHEEL = 0x020A;
+
+        protected override void OnMouseWheel(MouseEventArgs e)
+        {
+            if (DroppedDown)
+            {
+                base.OnMouseWheel(e);
+                return;
+            }
+
+            // Ignore mouse wheel to prevent accidental value changes.
+        }
+
+        protected override void WndProc(ref Message m)
+        {
+            if (m.Msg == WM_MOUSEWHEEL && !DroppedDown)
+            {
+                return;
+            }
+
+            base.WndProc(ref m);
         }
     }
 }

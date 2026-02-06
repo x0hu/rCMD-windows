@@ -49,9 +49,9 @@ namespace RcmdWindows
             this.StartPosition = FormStartPosition.Manual;
             this.ShowInTaskbar = false;
             this.TopMost = true;
-            this.BackColor = Color.FromArgb(30, 30, 30);
+            this.BackColor = Color.FromArgb(28, 28, 28);
             this.DoubleBuffered = true;
-            this.Opacity = 0.95;
+            this.Opacity = 0.98;
             this.AutoScaleMode = AutoScaleMode.Dpi;
         }
 
@@ -139,8 +139,9 @@ namespace RcmdWindows
 
         private void CalculateSizeAndPosition()
         {
-            int itemSize = 48;
-            int padding = 8;
+            var metrics = GetOverlayMetrics();
+            int itemSize = metrics.ItemSize;
+            int padding = metrics.Padding;
             int itemsPerRow = Math.Min(appGroups.Count, 13);
             int rows = (int)Math.Ceiling(appGroups.Count / 13.0);
 
@@ -179,8 +180,8 @@ namespace RcmdWindows
             g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
 
             // Draw background with rounded corners
-            using (var path = CreateRoundedRectangle(ClientRectangle, 12))
-            using (var brush = new SolidBrush(Color.FromArgb(40, 40, 40)))
+            using (var path = CreateRoundedRectangle(ClientRectangle, 14))
+            using (var brush = new SolidBrush(Color.FromArgb(38, 38, 38)))
             {
                 g.FillPath(brush, path);
             }
@@ -199,8 +200,9 @@ namespace RcmdWindows
                 return;
             }
 
-            int itemSize = 48;
-            int padding = 8;
+            var metrics = GetOverlayMetrics();
+            int itemSize = metrics.ItemSize;
+            int padding = metrics.Padding;
             int x = padding;
             int y = padding;
             int itemsPerRow = 13;
@@ -234,8 +236,8 @@ namespace RcmdWindows
 
             // Background
             Color bgColor = isHighlighted
-                ? Color.FromArgb(70, 130, 180)  // Steel blue when highlighted
-                : Color.FromArgb(60, 60, 60);
+                ? Color.FromArgb(90, 150, 230)
+                : Color.FromArgb(58, 58, 58);
 
             using (var path = CreateRoundedRectangle(rect, 8))
             using (var brush = new SolidBrush(bgColor))
@@ -244,7 +246,8 @@ namespace RcmdWindows
             }
 
             // Draw icon or letter
-            int iconSize = 24;
+            var metrics = GetOverlayMetrics();
+            int iconSize = metrics.IconSize;
             int iconX = x + (size - iconSize) / 2;
             int iconY = y + 4;
 
@@ -265,8 +268,8 @@ namespace RcmdWindows
             }
 
             // Draw letter indicator at bottom
-            using (var font = new Font("Segoe UI Semibold", 9f))
-            using (var brush = new SolidBrush(isHighlighted ? Color.White : Color.FromArgb(200, 200, 200)))
+            using (var font = new Font("Segoe UI Semibold", metrics.LetterSize))
+            using (var brush = new SolidBrush(isHighlighted ? Color.White : Color.FromArgb(210, 210, 210)))
             {
                 var letterStr = group.Letter.ToString();
                 var letterSize = g.MeasureString(letterStr, font);
@@ -279,8 +282,8 @@ namespace RcmdWindows
             if (group.Windows.Count > 1)
             {
                 var badgeText = group.Windows.Count.ToString();
-                using (var font = new Font("Segoe UI", 7f, FontStyle.Bold))
-                using (var bgBrush = new SolidBrush(Color.FromArgb(100, 149, 237)))
+                using (var font = new Font("Segoe UI", metrics.BadgeSize, FontStyle.Bold))
+                using (var bgBrush = new SolidBrush(Color.FromArgb(96, 160, 240)))
                 using (var textBrush = new SolidBrush(Color.White))
                 {
                     var badgeSize = g.MeasureString(badgeText, font);
@@ -303,7 +306,8 @@ namespace RcmdWindows
 
         private void DrawLetterFallback(Graphics g, int x, int y, int size, char letter)
         {
-            using (var font = new Font("Segoe UI", 14f, FontStyle.Bold))
+            var metrics = GetOverlayMetrics();
+            using (var font = new Font("Segoe UI", metrics.FallbackLetterSize, FontStyle.Bold))
             using (var brush = new SolidBrush(Color.FromArgb(180, 180, 180)))
             {
                 var letterStr = letter.ToString();
@@ -312,6 +316,36 @@ namespace RcmdWindows
                     x + (size - letterSize.Width) / 2,
                     y + (size - letterSize.Height) / 2);
             }
+        }
+
+        private OverlayMetrics GetOverlayMetrics()
+        {
+            return AppSettings.Instance.SwitcherOverlaySize switch
+            {
+                OverlaySize.Small => new OverlayMetrics(44, 7, 22, 8f, 7f, 12f),
+                OverlaySize.Large => new OverlayMetrics(64, 10, 30, 11f, 9f, 18f),
+                _ => new OverlayMetrics(52, 8, 26, 9f, 8f, 15f)
+            };
+        }
+
+        private readonly struct OverlayMetrics
+        {
+            public OverlayMetrics(int itemSize, int padding, int iconSize, float letterSize, float badgeSize, float fallbackLetterSize)
+            {
+                ItemSize = itemSize;
+                Padding = padding;
+                IconSize = iconSize;
+                LetterSize = letterSize;
+                BadgeSize = badgeSize;
+                FallbackLetterSize = fallbackLetterSize;
+            }
+
+            public int ItemSize { get; }
+            public int Padding { get; }
+            public int IconSize { get; }
+            public float LetterSize { get; }
+            public float BadgeSize { get; }
+            public float FallbackLetterSize { get; }
         }
 
         private GraphicsPath CreateRoundedRectangle(Rectangle rect, int radius)

@@ -1,53 +1,25 @@
 using System;
 using System.Collections.Generic;
-using System.Windows.Forms;
 using System.Drawing;
+using System.Windows.Forms;
 
 namespace RcmdWindows
 {
     public class TrayApplication : IDisposable
     {
-        private NotifyIcon trayIcon;
-        private KeyboardHook keyboardHook;
-        private ApplicationManager appManager;
-        private WindowSwitcher windowSwitcher;
-        private SwitcherOverlay switcherOverlay;
+        private readonly NotifyIcon trayIcon;
+        private readonly KeyboardHook keyboardHook;
+        private readonly ApplicationManager appManager;
+        private readonly WindowSwitcher windowSwitcher;
+        private readonly SwitcherOverlay switcherOverlay;
 
         // Track cycling state per letter
-        private Dictionary<char, int> lastWindowIndex = new Dictionary<char, int>();
+        private readonly Dictionary<char, int> lastWindowIndex = new Dictionary<char, int>();
         private char? lastSwitchedLetter = null;
 
         public TrayApplication()
         {
-            InitializeTrayIcon();
-            InitializeComponents();
-        }
-
-        private void InitializeTrayIcon()
-        {
-            trayIcon = new NotifyIcon
-            {
-                Text = "rcmd for Windows",
-                Visible = !AppSettings.Instance.HideTrayIcon
-            };
-
-            // Create a simple icon (you can replace this with a proper icon file later)
-            using (var bitmap = new Bitmap(16, 16))
-            using (var graphics = Graphics.FromImage(bitmap))
-            {
-                graphics.Clear(Color.Blue);
-                trayIcon.Icon = Icon.FromHandle(bitmap.GetHicon());
-            }
-
-            var contextMenu = new ContextMenuStrip();
-            contextMenu.Items.Add("Settings", null, OnSettings);
-            contextMenu.Items.Add(new ToolStripSeparator());
-            contextMenu.Items.Add("Exit", null, OnExit);
-            trayIcon.ContextMenuStrip = contextMenu;
-        }
-
-        private void InitializeComponents()
-        {
+            trayIcon = CreateTrayIcon();
             appManager = new ApplicationManager();
             windowSwitcher = new WindowSwitcher();
             keyboardHook = new KeyboardHook();
@@ -61,6 +33,31 @@ namespace RcmdWindows
             keyboardHook.Install();
 
             Console.WriteLine("rcmd for Windows started. Press modifier + letter to switch apps.");
+        }
+
+        private NotifyIcon CreateTrayIcon()
+        {
+            var icon = new NotifyIcon
+            {
+                Text = "rcmd for Windows",
+                Visible = !AppSettings.Instance.HideTrayIcon
+            };
+
+            // Create a simple icon (you can replace this with a proper icon file later)
+            using (var bitmap = new Bitmap(16, 16))
+            using (var graphics = Graphics.FromImage(bitmap))
+            {
+                graphics.Clear(Color.Blue);
+                icon.Icon = Icon.FromHandle(bitmap.GetHicon());
+            }
+
+            var contextMenu = new ContextMenuStrip();
+            contextMenu.Items.Add("Settings", null, OnSettings);
+            contextMenu.Items.Add(new ToolStripSeparator());
+            contextMenu.Items.Add("Exit", null, OnExit);
+            icon.ContextMenuStrip = contextMenu;
+
+            return icon;
         }
 
         private void HandleModifierPressed()
@@ -83,8 +80,15 @@ namespace RcmdWindows
 
         private void HandleSettingsPressed()
         {
-            var settingsForm = new SettingsForm(appManager);
-            settingsForm.ShowDialog();
+            OpenSettings();
+        }
+
+        private void OpenSettings()
+        {
+            using (var settingsForm = new SettingsForm(appManager))
+            {
+                settingsForm.ShowDialog();
+            }
             RefreshTrayIconVisibility();
         }
 
@@ -191,7 +195,7 @@ namespace RcmdWindows
                 return;
 
             string processName = focusedWindow.Value.ProcessName;
-            using (var dialog = new LetterInputDialog(processName))
+            using (var dialog = new LetterInputDialog(processName, AppSettings.Instance))
             {
                 if (dialog.ShowDialog() == DialogResult.OK)
                 {
@@ -211,9 +215,7 @@ namespace RcmdWindows
 
         private void OnSettings(object? sender, EventArgs e)
         {
-            var settingsForm = new SettingsForm(appManager);
-            settingsForm.ShowDialog();
-            RefreshTrayIconVisibility();
+            OpenSettings();
         }
 
         private void OnExit(object? sender, EventArgs e)

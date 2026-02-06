@@ -13,9 +13,69 @@ namespace RcmdWindows
     public enum MinimizeScope { AllApps, FocusedApp }
     public enum MinimizeAffects { AllWindows, FocusedWindow }
     public enum ModifierKey { None, Shift, Ctrl, Alt, RightAlt, Win }
+    public enum UiScale { Small, Medium, Large }
+    public enum OverlaySize { Small, Medium, Large }
 
     public class AppSettings
     {
+        public AppSettings Clone()
+        {
+            var clone = new AppSettings
+            {
+                LaunchAtLogin = LaunchAtLogin,
+                HideTrayIcon = HideTrayIcon,
+                ExcludeStaticApps = ExcludeStaticApps,
+                EnableAssignLetterHotkey = EnableAssignLetterHotkey,
+                EnableForceCycleHotkey = EnableForceCycleHotkey,
+                EnableHideOthersOnFocus = EnableHideOthersOnFocus,
+                SingleAppMode = SingleAppMode,
+                AppWindowFocus = AppWindowFocus,
+                WhenAlreadyFocusedBehavior = WhenAlreadyFocusedBehavior,
+                AppsModifierKey = AppsModifierKey,
+                WindowsModifierKey = WindowsModifierKey,
+                MinimizeKeyHides = MinimizeKeyHides,
+                MinimizeKeyAffects = MinimizeKeyAffects,
+                HideMinimizeKey = HideMinimizeKey,
+                MenuActionsKey = MenuActionsKey,
+                SettingsUiScale = SettingsUiScale,
+                SwitcherOverlaySize = SwitcherOverlaySize
+            };
+
+            clone.DisabledKeys = new HashSet<char>(DisabledKeys);
+            clone.ProcessLetterMappings = new Dictionary<string, char>(ProcessLetterMappings, StringComparer.OrdinalIgnoreCase);
+            clone.ExcludedProcesses = new HashSet<string>(ExcludedProcesses, StringComparer.OrdinalIgnoreCase);
+
+            return clone;
+        }
+
+        public void ApplyFrom(AppSettings source, bool includeLaunchAtLogin = true)
+        {
+            if (includeLaunchAtLogin)
+            {
+                LaunchAtLogin = source.LaunchAtLogin;
+            }
+
+            HideTrayIcon = source.HideTrayIcon;
+            ExcludeStaticApps = source.ExcludeStaticApps;
+            EnableAssignLetterHotkey = source.EnableAssignLetterHotkey;
+            EnableForceCycleHotkey = source.EnableForceCycleHotkey;
+            EnableHideOthersOnFocus = source.EnableHideOthersOnFocus;
+            SingleAppMode = source.SingleAppMode;
+            AppWindowFocus = source.AppWindowFocus;
+            WhenAlreadyFocusedBehavior = source.WhenAlreadyFocusedBehavior;
+            AppsModifierKey = source.AppsModifierKey;
+            WindowsModifierKey = source.WindowsModifierKey;
+            MinimizeKeyHides = source.MinimizeKeyHides;
+            MinimizeKeyAffects = source.MinimizeKeyAffects;
+            HideMinimizeKey = source.HideMinimizeKey;
+            MenuActionsKey = source.MenuActionsKey;
+            SettingsUiScale = source.SettingsUiScale;
+            SwitcherOverlaySize = source.SwitcherOverlaySize;
+
+            DisabledKeys = new HashSet<char>(source.DisabledKeys);
+            ProcessLetterMappings = new Dictionary<string, char>(source.ProcessLetterMappings, StringComparer.OrdinalIgnoreCase);
+            ExcludedProcesses = new HashSet<string>(source.ExcludedProcesses, StringComparer.OrdinalIgnoreCase);
+        }
         private static readonly string SettingsPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "RcmdWindows",
@@ -55,6 +115,13 @@ namespace RcmdWindows
 
         public char HideMinimizeKey { get; set; } = '-';
         public char MenuActionsKey { get; set; } = '=';
+
+        // ===== UI =====
+        [JsonConverter(typeof(JsonStringEnumConverter))]
+        public UiScale SettingsUiScale { get; set; } = UiScale.Large;
+
+        [JsonConverter(typeof(JsonStringEnumConverter))]
+        public OverlaySize SwitcherOverlaySize { get; set; } = OverlaySize.Medium;
 
         // ===== Captured Keys =====
         public HashSet<char> DisabledKeys { get; set; } = new HashSet<char>();

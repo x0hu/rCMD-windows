@@ -18,7 +18,7 @@ namespace RcmdWindows
     {
         [DllImport("user32.dll")]
         private static extern bool EnumWindows(EnumWindowsProc enumProc, IntPtr lParam);
-        
+
         [DllImport("user32.dll")]
         private static extern bool IsWindowVisible(IntPtr hWnd);
 
@@ -33,7 +33,7 @@ namespace RcmdWindows
 
         private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
-        private List<WindowInfo> cachedWindows = new List<WindowInfo>();
+        private readonly List<WindowInfo> cachedWindows = new List<WindowInfo>();
         private DateTime lastCacheUpdate = DateTime.MinValue;
         private readonly TimeSpan cacheTimeout = TimeSpan.FromMilliseconds(500);
 

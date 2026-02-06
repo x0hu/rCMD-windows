@@ -32,9 +32,6 @@ namespace RcmdWindows
         private static extern bool BringWindowToTop(IntPtr hWnd);
 
         [DllImport("user32.dll")]
-        private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
-
-        [DllImport("user32.dll")]
         private static extern bool EnumWindows(EnumWindowsProc enumProc, IntPtr lParam);
 
         [DllImport("user32.dll")]
@@ -47,12 +44,6 @@ namespace RcmdWindows
         private static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
 
         private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
-
-        private static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
-        private static readonly IntPtr HWND_NOTOPMOST = new IntPtr(-2);
-        private const uint SWP_NOMOVE = 0x0002;
-        private const uint SWP_NOSIZE = 0x0001;
-        private const uint SWP_SHOWWINDOW = 0x0040;
 
         private const int SW_RESTORE = 9;
         private const int SW_SHOW = 5;
