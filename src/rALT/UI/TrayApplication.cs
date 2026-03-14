@@ -12,6 +12,8 @@ namespace rALT
         private readonly ApplicationManager appManager;
         private readonly WindowSwitcher windowSwitcher;
         private readonly SwitcherOverlay switcherOverlay;
+        private readonly object settingsLock = new object();
+        private bool isSettingsOpen;
 
         // Track cycling state per letter
         private readonly Dictionary<char, int> lastWindowIndex = new Dictionary<char, int>();
@@ -85,10 +87,31 @@ namespace rALT
 
         private void OpenSettings()
         {
+            lock (settingsLock)
+            {
+                if (isSettingsOpen)
+                {
+                    return;
+                }
+
+                isSettingsOpen = true;
+            }
+
             using (var settingsForm = new SettingsForm(appManager))
             {
-                settingsForm.ShowDialog();
+                try
+                {
+                    settingsForm.ShowDialog();
+                }
+                finally
+                {
+                    lock (settingsLock)
+                    {
+                        isSettingsOpen = false;
+                    }
+                }
             }
+
             RefreshTrayIconVisibility();
         }
 

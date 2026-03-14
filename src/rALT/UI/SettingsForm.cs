@@ -38,6 +38,7 @@ namespace rALT
 
             ApplyUiScale(draft.SettingsUiScale);
             UiTheme.Apply(this);
+            RefreshMappedKeyStyles();
         }
 
         [DllImport("dwmapi.dll")]
