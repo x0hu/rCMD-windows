@@ -1,9 +1,10 @@
 # Build outputs
-bin/
-obj/
+**/bin/
+**/obj/
 
 # Publish output
 publish/
+dist/
 
 # Visual Studio
 .vs/
@@ -23,6 +24,7 @@ Desktop.ini
 
 # VS Code
 .vscode/
+.claude/
 
 # User-specific settings
 *.rsuser
@@ -41,3 +43,5 @@ x86/
 # Misc
 *.log
 nul
+.dotnet/
+.nuget/

@@ -5,7 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Win32;
 
-namespace RcmdWindows
+namespace rALT
 {
     // Enums for settings options
     public enum WindowFocusBehavior { AllWindows, MainWindow }
@@ -78,7 +78,7 @@ namespace RcmdWindows
         }
         private static readonly string SettingsPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "RcmdWindows",
+            "rALT",
             "settings.json"
         );
 
@@ -226,7 +226,7 @@ namespace RcmdWindows
 
         // ===== Launch at Login =====
         private const string StartupRegistryKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
-        private const string AppName = "RcmdWindows";
+        private const string AppName = "rALT";
 
         public void SetLaunchAtLogin(bool enabled)
         {
@@ -299,3 +299,4 @@ namespace RcmdWindows
         }
     }
 }
+

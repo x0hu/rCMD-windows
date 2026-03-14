@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
 
-namespace RcmdWindows
+namespace rALT
 {
     public class TrayApplication : IDisposable
     {
@@ -32,14 +32,14 @@ namespace RcmdWindows
             keyboardHook.OnSettingsPressed += HandleSettingsPressed;
             keyboardHook.Install();
 
-            Console.WriteLine("rcmd for Windows started. Press modifier + letter to switch apps.");
+            Console.WriteLine("rALT for Windows started. Press modifier + letter to switch apps.");
         }
 
         private NotifyIcon CreateTrayIcon()
         {
             var icon = new NotifyIcon
             {
-                Text = "rcmd for Windows",
+                Text = "rALT for Windows",
                 Visible = !AppSettings.Instance.HideTrayIcon
             };
 
@@ -231,3 +231,4 @@ namespace RcmdWindows
         }
     }
 }
+

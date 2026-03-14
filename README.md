@@ -1,69 +1,70 @@
 # rALT for Windows
 
-A Windows app switcher inspired by macOS's rcmd. Switch to applications instantly using Right Alt (rALT) + letter shortcuts.
+A lightweight Windows app switcher inspired by [rcmd](https://lowtechguys.com/rcmd/). Switch to any app faster insted of alt tabbing.
 
-## Features
+## Download (Recommended)
 
-- **Instant app switching**: Hold Right Alt (rALT) and press the first letter of an app's process name
-- **System tray app**: Runs quietly in the background
-- **Low-level keyboard hook**: Captures Right Alt + letter combinations
-- **Automatic window enumeration**: Finds running applications
-- **Restore minimized windows**: Automatically restores windows before switching
-- **Settings UI**: Configure behavior, captured keys, and app shortcuts
-- **Overlay**: Shows available app letters while holding the modifier
+Most users should install from GitHub Releases.
 
-## How It Works
+1. Open the latest release.
+2. Download `rALT.exe` (or the release zip if provided).
+3. Run `rALT.exe`.
+4. Optional: in Settings, enable launch at login.
 
-1. Hold the **Right Alt (rALT)** key
-2. Press a **letter** (a-z)
-3. The app will switch to the first running application whose process name starts with that letter
+## What rALT does
 
-### Examples
+- Hold your app modifier key (default: Right Alt)
+- Press a letter key
+- Jump to a running app mapped to that letter
 
-- Right Alt + **C** -> Chrome
-- Right Alt + **V** -> Visual Studio Code (or VS)
-- Right Alt + **N** -> Notepad
-- Right Alt + **E** -> Excel or Explorer
+The app runs in the system tray and includes a settings UI for mappings and behavior.
 
-## Building and Running
+## Build from source (Optional)
 
 ### Prerequisites
 
-- .NET 8.0 SDK or later
-- Windows OS
+- Windows 10/11
+- .NET 8 SDK
 
 ### Build
 
-```bash
-dotnet build
+```powershell
+dotnet build .\src\rALT\rALT.csproj
 ```
 
-### Run
+### Run locally
 
-```bash
-dotnet run
+```powershell
+dotnet run --project .\src\rALT\rALT.csproj
 ```
 
-The application will start in the system tray.
+### Publish a distributable EXE
 
-## Current Limitations (POC)
+```powershell
+.\scripts\publish-win-x64.ps1
+```
 
-- Only matches by process name first letter by default
-- No ability to launch apps that aren't running yet
-- Console output for debugging (will be hidden in release builds)
+Output:
 
-## Next Steps
+```text
+dist/win-x64/rALT.exe
+```
 
-- [ ] Implement improved cycling between apps with the same first letter
-- [ ] Add configuration file support (JSON)
-- [ ] Launch apps that aren't running
-- [ ] Window-level switching (not just apps)
-- [ ] Auto-start with Windows
+## CI build artifact
 
-## Technical Details
+GitHub Actions workflow: `.github/workflows/build-exe.yml`
 
-- Uses Windows low-level keyboard hooks (`SetWindowsHookEx`)
-- Right Alt virtual key code: `VK_RMENU (0xA5)`
-- Window enumeration via `EnumWindows` API
-- Window switching via `SetForegroundWindow` API
-- Runs as a Windows Forms application for event loop and tray support
+- Builds `rALT.exe` on PRs and pushes to `main`
+- Uploads artifact: `rALT-win-x64`
+
+## Project layout
+
+```
+src/rALT/            # C# WinForms app project
+scripts/             # helper scripts for publishing
+```
+
+## Notes
+
+- This app currently switches among running apps; it does not launch apps that are closed.
+- Settings are stored per-user in `%AppData%\rALT\settings.json`.

@@ -2,7 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 
-namespace RcmdWindows
+namespace rALT
 {
     public class KeyboardHook : IDisposable
     {
@@ -227,3 +227,4 @@ namespace RcmdWindows
         }
     }
 }
+

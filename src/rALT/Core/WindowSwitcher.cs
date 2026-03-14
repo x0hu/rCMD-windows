@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace RcmdWindows
+namespace rALT
 {
     public class WindowSwitcher
     {
@@ -299,3 +299,4 @@ namespace RcmdWindows
         }
     }
 }
+

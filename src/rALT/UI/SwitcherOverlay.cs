@@ -6,7 +6,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
-namespace RcmdWindows
+namespace rALT
 {
     public class SwitcherOverlay : Form
     {
@@ -386,3 +386,4 @@ namespace RcmdWindows
         }
     }
 }
+

@@ -1,7 +1,7 @@
 using System;
 using System.Windows.Forms;
 
-namespace RcmdWindows
+namespace rALT
 {
     static class Program
     {
@@ -19,3 +19,4 @@ namespace RcmdWindows
         }
     }
 }
+

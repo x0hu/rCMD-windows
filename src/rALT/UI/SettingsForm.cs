@@ -2,9 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
-namespace RcmdWindows
+namespace rALT
 {
     public class SettingsForm : Form
     {
@@ -12,10 +13,9 @@ namespace RcmdWindows
         private readonly AppSettings settings;
         private readonly AppSettings draft;
         private readonly ToolTip toolTip;
-        private readonly TableLayoutPanel root;
-        private readonly Panel leftColumn;
-        private readonly Panel rightColumn;
+        private readonly DarkTabControl tabControl;
         private readonly Panel footer;
+        private readonly Dictionary<char, Button> capturedKeyButtons = new Dictionary<char, Button>();
 
         public SettingsForm(ApplicationManager appManager)
         {
@@ -28,78 +28,128 @@ namespace RcmdWindows
             StartPosition = FormStartPosition.CenterScreen;
             AutoScaleMode = AutoScaleMode.Dpi;
             Font = SystemFonts.MessageBoxFont;
-            MinimumSize = new Size(980, 800);
+            MinimumSize = new Size(880, 680);
 
-            root = new TableLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                AutoScroll = false,
-                ColumnCount = 2,
-                RowCount = 1,
-                Padding = new Padding(16),
-                AutoSize = false
-            };
-
-            root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-            root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-
-            leftColumn = new Panel
-            {
-                Dock = DockStyle.Fill,
-                AutoSize = false,
-                AutoScroll = false,
-                Padding = new Padding(0, 0, 8, 0)
-            };
-
-            rightColumn = new Panel
-            {
-                Dock = DockStyle.Fill,
-                AutoSize = false,
-                AutoScroll = false,
-                Padding = new Padding(0, 0, 12, 0)
-            };
-
-            root.Controls.Add(leftColumn, 0, 0);
-            root.Controls.Add(rightColumn, 1, 0);
+            tabControl = BuildTabs();
 
             footer = BuildFooter();
-            Controls.Add(root);
+            Controls.Add(tabControl);
             Controls.Add(footer);
 
-            Resize += (s, e) => UpdateSectionWidths();
             ApplyUiScale(draft.SettingsUiScale);
-            BuildUI();
             UiTheme.Apply(this);
         }
 
-        private void BuildUI()
-        {
-            AddSection(leftColumn, BuildGeneralSection());
-            AddSection(leftColumn, BuildHotkeySection());
-            AddSection(leftColumn, BuildKeyConfigSection());
+        [DllImport("dwmapi.dll")]
+        private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
 
-            AddSection(rightColumn, BuildFocusSection());
-            AddSection(rightColumn, BuildAppShortcutsSection());
-            AddSection(rightColumn, BuildCapturedKeysSection());
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            TryEnableDarkTitleBar();
         }
 
-        private void AddSection(Control container, Control section)
+        private void TryEnableDarkTitleBar()
         {
-            section.Margin = new Padding(0, 0, 10, 16);
+            int enabled = 1;
+            _ = DwmSetWindowAttribute(Handle, 20, ref enabled, sizeof(int));
+            _ = DwmSetWindowAttribute(Handle, 19, ref enabled, sizeof(int));
+        }
+
+        private DarkTabControl BuildTabs()
+        {
+            var tabs = new DarkTabControl
+            {
+                Dock = DockStyle.Fill
+            };
+
+            tabs.TabPages.Add(BuildGeneralTab());
+            tabs.TabPages.Add(BuildShortcutsTab());
+            tabs.TabPages.Add(BuildSwitchingTab());
+            tabs.TabPages.Add(BuildAppsTab());
+            tabs.TabPages.Add(BuildAdvancedTab());
+
+            return tabs;
+        }
+
+        private TabPage BuildGeneralTab()
+        {
+            return CreateTabPage(
+                "General",
+                BuildGeneralSection(),
+                BuildAppearanceSection()
+            );
+        }
+
+        private TabPage BuildShortcutsTab()
+        {
+            return CreateTabPage(
+                "Shortcuts",
+                BuildHotkeySection(),
+                BuildCapturedKeysSection()
+            );
+        }
+
+        private TabPage BuildSwitchingTab()
+        {
+            return CreateTabPage(
+                "Switching",
+                BuildFocusSection(),
+                BuildSwitchingBehaviorSection()
+            );
+        }
+
+        private TabPage BuildAppsTab()
+        {
+            return CreateTabPage(
+                "Apps",
+                BuildAppShortcutsSection()
+            );
+        }
+
+        private TabPage BuildAdvancedTab()
+        {
+            return CreateTabPage(
+                "Advanced",
+                BuildKeyConfigSection(),
+                BuildDataSection()
+            );
+        }
+
+        private static TabPage CreateTabPage(string title, params Control[] sections)
+        {
+            var page = new TabPage(title);
+
+            var scrollPanel = new Panel
+            {
+                Dock = DockStyle.Fill,
+                AutoScroll = true,
+                Padding = new Padding(12)
+            };
+
+            page.Controls.Add(scrollPanel);
+
+            for (int i = sections.Length - 1; i >= 0; i--)
+            {
+                AddSection(scrollPanel, sections[i]);
+            }
+
+            return page;
+        }
+
+        private static void AddSection(Panel container, Control section)
+        {
+            var wrapper = new Panel
+            {
+                Dock = DockStyle.Top,
+                AutoSize = true,
+                Padding = new Padding(0, 0, 0, 12)
+            };
+
             section.Dock = DockStyle.Top;
             section.AutoSize = true;
-            container.Controls.Add(section);
-            section.BringToFront();
-
-            if (section is GroupBox groupBox)
-            {
-                groupBox.AutoSize = false;
-                int targetWidth = Math.Max(0, container.ClientSize.Width - 12);
-                groupBox.Width = targetWidth;
-                groupBox.PerformLayout();
-                int preferredHeight = groupBox.GetPreferredSize(new Size(targetWidth, 0)).Height;
-                groupBox.Height = preferredHeight + 20;
-            }
+            wrapper.Controls.Add(section);
+            container.Controls.Add(wrapper);
         }
 
         private Panel BuildFooter()
@@ -107,33 +157,40 @@ namespace RcmdWindows
             var panel = new Panel
             {
                 Dock = DockStyle.Bottom,
-                Height = 84,
+                Height = 72,
                 Padding = new Padding(16, 12, 16, 12)
             };
 
-            var saveButton = new Button
+            var applyButton = new Button
             {
-                Text = "Save",
+                Text = "Apply",
                 AutoSize = true,
                 Padding = new Padding(12, 6, 12, 6),
-                MinimumSize = new Size(90, 34)
+                MinimumSize = new Size(100, 34)
+            };
+            applyButton.Click += (s, e) => ApplyDraftSettings();
+
+            var saveButton = new Button
+            {
+                Text = "Save && Close",
+                AutoSize = true,
+                Padding = new Padding(12, 6, 12, 6),
+                MinimumSize = new Size(120, 34)
             };
             saveButton.Click += (s, e) =>
             {
-                settings.ApplyFrom(draft, includeLaunchAtLogin: false);
-                settings.SetLaunchAtLogin(draft.LaunchAtLogin);
-                settings.Save();
+                ApplyDraftSettings();
                 Close();
             };
 
-            var closeButton = new Button
+            var cancelButton = new Button
             {
-                Text = "Close",
+                Text = "Cancel",
                 AutoSize = true,
                 Padding = new Padding(12, 6, 12, 6),
-                MinimumSize = new Size(90, 34)
+                MinimumSize = new Size(100, 34)
             };
-            closeButton.Click += (s, e) => Close();
+            cancelButton.Click += (s, e) => Close();
 
             var flow = new FlowLayoutPanel
             {
@@ -141,12 +198,19 @@ namespace RcmdWindows
                 AutoSize = true,
                 FlowDirection = FlowDirection.LeftToRight,
                 WrapContents = false,
-                Padding = new Padding(0, 0, 0, 0)
+                Padding = new Padding(0),
+                Margin = new Padding(0)
             };
 
+            flow.Controls.Add(applyButton);
             flow.Controls.Add(saveButton);
-            flow.Controls.Add(closeButton);
+            flow.Controls.Add(cancelButton);
             panel.Controls.Add(flow);
+            panel.Paint += (s, e) =>
+            {
+                using var pen = new Pen(UiTheme.Border);
+                e.Graphics.DrawLine(pen, 0, 0, panel.Width, 0);
+            };
             return panel;
         }
 
@@ -155,26 +219,24 @@ namespace RcmdWindows
             var box = CreateGroupBox("General");
             var panel = CreateFlowPanel();
 
-            var launchAtLogin = CreateCheckBox("Launch at login", draft.LaunchAtLogin, (s, e) => { });
+            var launchAtLogin = CreateCheckBox("Launch app automatically when you sign in", draft.LaunchAtLogin);
             launchAtLogin.CheckedChanged += (s, e) => draft.LaunchAtLogin = launchAtLogin.Checked;
+            toolTip.SetToolTip(launchAtLogin, "Adds or removes this app from your Windows startup apps.");
 
-            var hideTray = CreateCheckBox("Hide tray icon", draft.HideTrayIcon, (s, e) => { });
-            hideTray.CheckedChanged += (s, e) =>
-            {
-                draft.HideTrayIcon = hideTray.Checked;
-            };
-
-            var excludeStatic = CreateCheckBox("Exclude static apps when cycling from dynamic apps", draft.ExcludeStaticApps, (s, e) => { });
-            excludeStatic.CheckedChanged += (s, e) =>
-            {
-                draft.ExcludeStaticApps = excludeStatic.Checked;
-            };
+            var hideTray = CreateCheckBox("Hide tray icon while running", draft.HideTrayIcon);
+            hideTray.CheckedChanged += (s, e) => draft.HideTrayIcon = hideTray.Checked;
+            toolTip.SetToolTip(hideTray, "If enabled, the app still runs in the background but won't show in the tray.");
 
             panel.Controls.Add(launchAtLogin);
             panel.Controls.Add(hideTray);
-            panel.Controls.Add(excludeStatic);
+            box.Controls.Add(panel);
+            return box;
+        }
 
-            var sizeTable = CreateTwoColumnTable();
+        private GroupBox BuildAppearanceSection()
+        {
+            var box = CreateGroupBox("Appearance");
+            var table = CreateTwoColumnTable();
 
             var overlaySizeLabel = CreateLabel("Overlay size");
             var overlaySize = CreateComboBox(Enum.GetNames(typeof(OverlaySize)));
@@ -187,10 +249,21 @@ namespace RcmdWindows
                 }
             };
 
-            AddRow(sizeTable, overlaySizeLabel, overlaySize);
+            var settingsSizeLabel = CreateLabel("Settings window size");
+            var settingsSize = CreateComboBox(Enum.GetNames(typeof(UiScale)));
+            settingsSize.SelectedItem = draft.SettingsUiScale.ToString();
+            settingsSize.SelectedIndexChanged += (s, e) =>
+            {
+                if (Enum.TryParse(settingsSize.SelectedItem?.ToString(), out UiScale scale))
+                {
+                    draft.SettingsUiScale = scale;
+                    ApplyUiScale(scale);
+                }
+            };
 
-            panel.Controls.Add(sizeTable);
-            box.Controls.Add(panel);
+            AddRow(table, overlaySizeLabel, overlaySize);
+            AddRow(table, settingsSizeLabel, settingsSize);
+            box.Controls.Add(table);
             return box;
         }
 
@@ -199,38 +272,21 @@ namespace RcmdWindows
             var box = CreateGroupBox("Hotkeys");
             var panel = CreateFlowPanel();
 
-            var assignLetter = CreateCheckBox("Enable assign letter hotkey (Alt)", draft.EnableAssignLetterHotkey, (s, e) => { });
-            assignLetter.CheckedChanged += (s, e) =>
-            {
-                draft.EnableAssignLetterHotkey = assignLetter.Checked;
-            };
+            var assignLetter = CreateCheckBox("Allow Alt to assign app letters", draft.EnableAssignLetterHotkey);
+            assignLetter.CheckedChanged += (s, e) => draft.EnableAssignLetterHotkey = assignLetter.Checked;
             toolTip.SetToolTip(assignLetter, "Hold the app modifier and Alt to assign a letter to the focused app.");
 
-            var forceCycle = CreateCheckBox("Enable force cycle hotkey (Right Shift)", draft.EnableForceCycleHotkey, (s, e) => { });
-            forceCycle.CheckedChanged += (s, e) =>
-            {
-                draft.EnableForceCycleHotkey = forceCycle.Checked;
-            };
+            var forceCycle = CreateCheckBox("Allow Right Shift to force cycle", draft.EnableForceCycleHotkey);
+            forceCycle.CheckedChanged += (s, e) => draft.EnableForceCycleHotkey = forceCycle.Checked;
             toolTip.SetToolTip(forceCycle, "Hold the app modifier and Right Shift to cycle apps with the same letter.");
 
-            var hideOthers = CreateCheckBox("Enable hide others on focus (Left Shift)", draft.EnableHideOthersOnFocus, (s, e) => { });
-            hideOthers.CheckedChanged += (s, e) =>
-            {
-                draft.EnableHideOthersOnFocus = hideOthers.Checked;
-            };
+            var hideOthers = CreateCheckBox("Allow Left Shift to hide other apps", draft.EnableHideOthersOnFocus);
+            hideOthers.CheckedChanged += (s, e) => draft.EnableHideOthersOnFocus = hideOthers.Checked;
             toolTip.SetToolTip(hideOthers, "Hold the app modifier and Left Shift to minimize other apps.");
-
-            var singleApp = CreateCheckBox("Single app mode", draft.SingleAppMode, (s, e) => { });
-            singleApp.CheckedChanged += (s, e) =>
-            {
-                draft.SingleAppMode = singleApp.Checked;
-            };
-            toolTip.SetToolTip(singleApp, "Always hide other apps when switching.");
 
             panel.Controls.Add(assignLetter);
             panel.Controls.Add(forceCycle);
             panel.Controls.Add(hideOthers);
-            panel.Controls.Add(singleApp);
 
             box.Controls.Add(panel);
             return box;
@@ -238,10 +294,10 @@ namespace RcmdWindows
 
         private GroupBox BuildFocusSection()
         {
-            var box = CreateGroupBox("Focus Behavior");
+            var box = CreateGroupBox("Window Focus");
             var table = CreateTwoColumnTable();
 
-            var appFocusLabel = CreateLabel("App window focus");
+            var appFocusLabel = CreateLabel("Bring windows");
             var appFocus = CreateComboBox(new[] { "All windows", "Main window" });
             appFocus.SelectedIndex = draft.AppWindowFocus == WindowFocusBehavior.AllWindows ? 0 : 1;
             appFocus.SelectedIndexChanged += (s, e) =>
@@ -251,7 +307,7 @@ namespace RcmdWindows
                     : WindowFocusBehavior.MainWindow;
             };
 
-            var alreadyFocusedLabel = CreateLabel("When already focused");
+            var alreadyFocusedLabel = CreateLabel("If app is already focused");
             var alreadyFocused = CreateComboBox(new[] { "Hide app", "Cycle apps", "Cycle windows" });
             alreadyFocused.SelectedIndex = (int)draft.WhenAlreadyFocusedBehavior;
             alreadyFocused.SelectedIndexChanged += (s, e) =>
@@ -266,13 +322,31 @@ namespace RcmdWindows
             return box;
         }
 
+        private GroupBox BuildSwitchingBehaviorSection()
+        {
+            var box = CreateGroupBox("Switching Behavior");
+            var panel = CreateFlowPanel();
+
+            var excludeStatic = CreateCheckBox("Prefer active apps when cycling", draft.ExcludeStaticApps);
+            excludeStatic.CheckedChanged += (s, e) => draft.ExcludeStaticApps = excludeStatic.Checked;
+            toolTip.SetToolTip(excludeStatic, "Prioritize active/running apps while cycling.");
+
+            var singleAppMode = CreateCheckBox("Single app mode (hide others on switch)", draft.SingleAppMode);
+            singleAppMode.CheckedChanged += (s, e) => draft.SingleAppMode = singleAppMode.Checked;
+            toolTip.SetToolTip(singleAppMode, "Keep only the selected app visible after switching.");
+
+            panel.Controls.Add(excludeStatic);
+            panel.Controls.Add(singleAppMode);
+            box.Controls.Add(panel);
+            return box;
+        }
+
         private GroupBox BuildKeyConfigSection()
         {
-            var box = CreateGroupBox("Key Configuration");
+            var box = CreateGroupBox("Key Mapping");
             var table = CreateTwoColumnTable();
-            box.Padding = new Padding(12, 12, 12, 26);
 
-            var appsKeyLabel = CreateLabel("Apps modifier key");
+            var appsKeyLabel = CreateLabel("App modifier");
             var appsKey = CreateComboBox(Enum.GetNames(typeof(ModifierKey)));
             appsKey.SelectedItem = draft.AppsModifierKey.ToString();
             appsKey.SelectedIndexChanged += (s, e) =>
@@ -283,7 +357,18 @@ namespace RcmdWindows
                 }
             };
 
-            var minimizeScopeLabel = CreateLabel("Minimize key hides");
+            var windowsKeyLabel = CreateLabel("Windows modifier");
+            var windowsKey = CreateComboBox(Enum.GetNames(typeof(ModifierKey)));
+            windowsKey.SelectedItem = draft.WindowsModifierKey.ToString();
+            windowsKey.SelectedIndexChanged += (s, e) =>
+            {
+                if (Enum.TryParse(windowsKey.SelectedItem?.ToString(), out ModifierKey key))
+                {
+                    draft.WindowsModifierKey = key;
+                }
+            };
+
+            var minimizeScopeLabel = CreateLabel("Minimize key scope");
             var minimizeScope = CreateComboBox(new[] { "All apps", "Focused app" });
             minimizeScope.SelectedIndex = draft.MinimizeKeyHides == MinimizeScope.AllApps ? 0 : 1;
             minimizeScope.SelectedIndexChanged += (s, e) =>
@@ -291,7 +376,7 @@ namespace RcmdWindows
                 draft.MinimizeKeyHides = minimizeScope.SelectedIndex == 0 ? MinimizeScope.AllApps : MinimizeScope.FocusedApp;
             };
 
-            var minimizeAffectsLabel = CreateLabel("Minimize key affects");
+            var minimizeAffectsLabel = CreateLabel("Minimize key target");
             var minimizeAffects = CreateComboBox(new[] { "All windows", "Focused window" });
             minimizeAffects.SelectedIndex = draft.MinimizeKeyAffects == MinimizeAffects.AllWindows ? 0 : 1;
             minimizeAffects.SelectedIndexChanged += (s, e) =>
@@ -301,7 +386,7 @@ namespace RcmdWindows
                     : MinimizeAffects.FocusedWindow;
             };
 
-            var hideKeyLabel = CreateLabel("Hide/Minimize key");
+            var hideKeyLabel = CreateLabel("Hide/minimize key");
             var hideKey = CreateSingleCharTextBox(draft.HideMinimizeKey);
             hideKey.TextChanged += (s, e) =>
             {
@@ -311,7 +396,7 @@ namespace RcmdWindows
                 }
             };
 
-            var menuKeyLabel = CreateLabel("Menu/Actions key");
+            var menuKeyLabel = CreateLabel("Actions key");
             var menuKey = CreateSingleCharTextBox(draft.MenuActionsKey);
             menuKey.TextChanged += (s, e) =>
             {
@@ -322,6 +407,7 @@ namespace RcmdWindows
             };
 
             AddRow(table, appsKeyLabel, appsKey);
+            AddRow(table, windowsKeyLabel, windowsKey);
             AddRow(table, minimizeScopeLabel, minimizeScope);
             AddRow(table, minimizeAffectsLabel, minimizeAffects);
             AddRow(table, hideKeyLabel, hideKey);
@@ -335,19 +421,16 @@ namespace RcmdWindows
         {
             var box = CreateGroupBox("App Shortcuts");
             var panel = CreateFlowPanel();
-            panel.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            panel.Padding = new Padding(0, 0, 0, 6);
-            box.Padding = new Padding(12, 12, 12, 18);
 
             var desc = new Label
             {
-                Text = "Assign custom letters to apps and exclude apps from switching.",
+                Text = "Pick letters for apps and choose which apps are included.",
                 AutoSize = true
             };
 
             var button = new Button
             {
-                Text = "Manage Apps...",
+                Text = "Manage app letters...",
                 AutoSize = true,
                 Padding = new Padding(10, 4, 10, 4),
                 MinimumSize = new Size(170, 32)
@@ -375,75 +458,283 @@ namespace RcmdWindows
 
             var desc = new Label
             {
-                Text = "Disable keys to prevent them from being captured by rcmd.",
+                Text = "Blue = captured by rALT. Gray = pass-through to apps. Default is all blue.",
                 AutoSize = true
             };
 
-            int listHeight = draft.SettingsUiScale switch
+            var resetButton = new Button
             {
-                UiScale.Small => 160,
-                UiScale.Medium => 220,
-                UiScale.Large => 280,
-                _ => 220
+                Text = "Reset to default",
+                AutoSize = true,
+                Padding = new Padding(10, 4, 10, 4),
+                Margin = new Padding(0, 6, 0, 8)
+            };
+            resetButton.Click += (s, e) =>
+            {
+                draft.DisabledKeys.Clear();
+                RefreshMappedKeyStyles();
             };
 
-            var list = new CheckedListBox
-            {
-                CheckOnClick = true,
-                IntegralHeight = false,
-                Height = listHeight,
-                Dock = DockStyle.Top
-            };
-
-            var keyItems = BuildCapturedKeyItems();
-            foreach (var item in keyItems)
-            {
-                bool captured = !draft.DisabledKeys.Contains(char.ToUpper(item.KeyChar));
-                list.Items.Add(item, captured);
-            }
-
-            list.ItemCheck += (s, e) =>
-            {
-                if (e.Index < 0 || e.Index >= list.Items.Count)
-                    return;
-
-                object? rawItem = list.Items[e.Index];
-                if (rawItem is CapturedKeyItem keyItem)
-                {
-                    bool captured = e.NewValue == CheckState.Checked;
-                    char upper = char.ToUpper(keyItem.KeyChar);
-                    if (captured)
-                    {
-                        draft.DisabledKeys.Remove(upper);
-                    }
-                    else
-                    {
-                        draft.DisabledKeys.Add(upper);
-                    }
-                }
-            };
+            var keyboard = BuildCapturedKeyKeyboard();
 
             panel.Controls.Add(desc);
-            panel.Controls.Add(list);
+            panel.Controls.Add(resetButton);
+            panel.Controls.Add(keyboard);
             box.Controls.Add(panel);
             return box;
         }
 
-        private List<CapturedKeyItem> BuildCapturedKeyItems()
+        private Control BuildCapturedKeyKeyboard()
         {
-            var items = new List<CapturedKeyItem>();
+            capturedKeyButtons.Clear();
 
-            for (char c = 'A'; c <= 'Z'; c++)
-                items.Add(new CapturedKeyItem(c.ToString(), c));
+            var keyboard = new TableLayoutPanel
+            {
+                Dock = DockStyle.Top,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                ColumnCount = 1,
+                RowCount = 5,
+                BackColor = UiTheme.Panel,
+                Padding = new Padding(10),
+                Margin = new Padding(0, 8, 0, 0)
+            };
 
-            for (char c = '0'; c <= '9'; c++)
-                items.Add(new CapturedKeyItem(c.ToString(), c));
+            AddKeyboardRow(keyboard, new[]
+            {
+                KeyboardKeySpec.Mapped("`", '`'),
+                KeyboardKeySpec.Mapped("1", '1'),
+                KeyboardKeySpec.Mapped("2", '2'),
+                KeyboardKeySpec.Mapped("3", '3'),
+                KeyboardKeySpec.Mapped("4", '4'),
+                KeyboardKeySpec.Mapped("5", '5'),
+                KeyboardKeySpec.Mapped("6", '6'),
+                KeyboardKeySpec.Mapped("7", '7'),
+                KeyboardKeySpec.Mapped("8", '8'),
+                KeyboardKeySpec.Mapped("9", '9'),
+                KeyboardKeySpec.Mapped("0", '0'),
+                KeyboardKeySpec.Mapped("-", '-'),
+                KeyboardKeySpec.Mapped("=", '='),
+                KeyboardKeySpec.Static("Backspace", 3)
+            });
 
-            string extra = "-=[];\\',./`";
-            foreach (var c in extra)
-                items.Add(new CapturedKeyItem(c.ToString(), c));
+            AddKeyboardRow(keyboard, new[]
+            {
+                KeyboardKeySpec.Static("Tab", 2),
+                KeyboardKeySpec.Mapped("Q", 'Q'),
+                KeyboardKeySpec.Mapped("W", 'W'),
+                KeyboardKeySpec.Mapped("E", 'E'),
+                KeyboardKeySpec.Mapped("R", 'R'),
+                KeyboardKeySpec.Mapped("T", 'T'),
+                KeyboardKeySpec.Mapped("Y", 'Y'),
+                KeyboardKeySpec.Mapped("U", 'U'),
+                KeyboardKeySpec.Mapped("I", 'I'),
+                KeyboardKeySpec.Mapped("O", 'O'),
+                KeyboardKeySpec.Mapped("P", 'P'),
+                KeyboardKeySpec.Mapped("[", '['),
+                KeyboardKeySpec.Mapped("]", ']'),
+                KeyboardKeySpec.Mapped("\\", '\\', 2)
+            });
 
-            return items;
+            AddKeyboardRow(keyboard, new[]
+            {
+                KeyboardKeySpec.Static("Caps", 2),
+                KeyboardKeySpec.Mapped("A", 'A'),
+                KeyboardKeySpec.Mapped("S", 'S'),
+                KeyboardKeySpec.Mapped("D", 'D'),
+                KeyboardKeySpec.Mapped("F", 'F'),
+                KeyboardKeySpec.Mapped("G", 'G'),
+                KeyboardKeySpec.Mapped("H", 'H'),
+                KeyboardKeySpec.Mapped("J", 'J'),
+                KeyboardKeySpec.Mapped("K", 'K'),
+                KeyboardKeySpec.Mapped("L", 'L'),
+                KeyboardKeySpec.Mapped(";", ';'),
+                KeyboardKeySpec.Mapped("'", '\''),
+                KeyboardKeySpec.Static("Enter", 3)
+            });
+
+            AddKeyboardRow(keyboard, new[]
+            {
+                KeyboardKeySpec.Static("Shift", 3),
+                KeyboardKeySpec.Mapped("Z", 'Z'),
+                KeyboardKeySpec.Mapped("X", 'X'),
+                KeyboardKeySpec.Mapped("C", 'C'),
+                KeyboardKeySpec.Mapped("V", 'V'),
+                KeyboardKeySpec.Mapped("B", 'B'),
+                KeyboardKeySpec.Mapped("N", 'N'),
+                KeyboardKeySpec.Mapped("M", 'M'),
+                KeyboardKeySpec.Mapped(",", ','),
+                KeyboardKeySpec.Mapped(".", '.'),
+                KeyboardKeySpec.Mapped("/", '/'),
+                KeyboardKeySpec.Static("Shift", 3)
+            });
+
+            AddKeyboardRow(keyboard, new[]
+            {
+                KeyboardKeySpec.Static("Ctrl", 2),
+                KeyboardKeySpec.Static("Win", 2),
+                KeyboardKeySpec.Static("Alt", 2),
+                KeyboardKeySpec.Static("Space", 8),
+                KeyboardKeySpec.Static("Alt", 2),
+                KeyboardKeySpec.Static("Menu", 2),
+                KeyboardKeySpec.Static("Ctrl", 2)
+            });
+
+            return keyboard;
+        }
+
+        private void AddKeyboardRow(TableLayoutPanel keyboard, IReadOnlyList<KeyboardKeySpec> keys)
+        {
+            var row = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Top,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = false,
+                BackColor = UiTheme.Panel,
+                Margin = new Padding(0, 0, 0, 6)
+            };
+
+            foreach (var key in keys)
+            {
+                row.Controls.Add(CreateKeyboardKeyControl(key));
+            }
+
+            keyboard.Controls.Add(row);
+        }
+
+        private Control CreateKeyboardKeyControl(KeyboardKeySpec key)
+        {
+            const int unitWidth = 40;
+            const int keyHeight = 34;
+            int keyWidth = (unitWidth * key.WidthUnits) + ((key.WidthUnits - 1) * 4);
+
+            if (key.KeyChar.HasValue)
+            {
+                var mappedButton = new Button
+                {
+                    AutoSize = false,
+                    Size = new Size(keyWidth, keyHeight),
+                    Text = key.Label,
+                    TextAlign = ContentAlignment.MiddleCenter,
+                    FlatStyle = FlatStyle.Flat,
+                    Margin = new Padding(0, 0, 4, 4),
+                    UseVisualStyleBackColor = false,
+                    TabStop = false
+                };
+
+                char normalizedKey = char.ToUpperInvariant(key.KeyChar.Value);
+                capturedKeyButtons[normalizedKey] = mappedButton;
+
+                bool isCaptured = IsCaptured(normalizedKey);
+                ApplyMappedKeyStyle(mappedButton, isCaptured);
+
+                mappedButton.Click += (s, e) =>
+                {
+                    bool nextCaptured = !IsCaptured(normalizedKey);
+                    SetCaptured(normalizedKey, nextCaptured);
+                    ApplyMappedKeyStyle(mappedButton, nextCaptured);
+                };
+
+                return mappedButton;
+            }
+
+            var spacer = new Button
+            {
+                AutoSize = false,
+                Size = new Size(keyWidth, keyHeight),
+                Text = key.Label,
+                FlatStyle = FlatStyle.Flat,
+                Margin = new Padding(0, 0, 4, 4),
+                BackColor = UiTheme.Panel,
+                ForeColor = UiTheme.MutedText,
+                UseVisualStyleBackColor = false,
+                TabStop = false
+            };
+            spacer.FlatAppearance.BorderColor = UiTheme.Border;
+            spacer.FlatAppearance.MouseOverBackColor = UiTheme.Panel;
+            spacer.FlatAppearance.MouseDownBackColor = UiTheme.Panel;
+            return spacer;
+        }
+
+        private static void ApplyMappedKeyStyle(Button button, bool captured)
+        {
+            button.BackColor = captured ? UiTheme.Accent : UiTheme.Control;
+            button.ForeColor = Color.White;
+            button.FlatAppearance.BorderColor = captured ? UiTheme.Accent : UiTheme.Border;
+            button.FlatAppearance.MouseOverBackColor = button.BackColor;
+            button.FlatAppearance.MouseDownBackColor = button.BackColor;
+        }
+
+        private void RefreshMappedKeyStyles()
+        {
+            foreach (var pair in capturedKeyButtons)
+            {
+                ApplyMappedKeyStyle(pair.Value, IsCaptured(pair.Key));
+            }
+        }
+
+        private bool IsCaptured(char key)
+        {
+            return !draft.DisabledKeys.Contains(char.ToUpperInvariant(key));
+        }
+
+        private void SetCaptured(char key, bool captured)
+        {
+            char normalized = char.ToUpperInvariant(key);
+            if (captured)
+            {
+                draft.DisabledKeys.Remove(normalized);
+            }
+            else
+            {
+                draft.DisabledKeys.Add(normalized);
+            }
+        }
+
+        private readonly struct KeyboardKeySpec
+        {
+            private KeyboardKeySpec(string label, char? keyChar, int widthUnits)
+            {
+                Label = label;
+                KeyChar = keyChar;
+                WidthUnits = widthUnits;
+            }
+
+            public string Label { get; }
+            public char? KeyChar { get; }
+            public int WidthUnits { get; }
+
+            public static KeyboardKeySpec Mapped(string label, char keyChar, int widthUnits = 1)
+            {
+                return new KeyboardKeySpec(label, keyChar, widthUnits);
+            }
+
+            public static KeyboardKeySpec Static(string label, int widthUnits = 1)
+            {
+                return new KeyboardKeySpec(label, null, widthUnits);
+            }
+        }
+
+        private GroupBox BuildDataSection()
+        {
+            var box = CreateGroupBox("Data");
+            var label = new Label
+            {
+                Text = $"Settings file:\n{System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "rALT", "settings.json")}",
+                AutoSize = true,
+                MaximumSize = new Size(760, 0)
+            };
+            box.Controls.Add(label);
+            return box;
+        }
+
+        private void ApplyDraftSettings()
+        {
+            settings.ApplyFrom(draft, includeLaunchAtLogin: false);
+            settings.SetLaunchAtLogin(draft.LaunchAtLogin);
+            settings.Save();
         }
 
         private static bool TryGetChar(string text, out char value)
@@ -463,7 +754,9 @@ namespace RcmdWindows
                 Text = title,
                 Dock = DockStyle.Top,
                 AutoSize = true,
-                Padding = new Padding(12)
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                Padding = new Padding(12),
+                Margin = new Padding(0)
             };
         }
 
@@ -473,8 +766,10 @@ namespace RcmdWindows
             {
                 Dock = DockStyle.Top,
                 AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
                 FlowDirection = FlowDirection.TopDown,
-                WrapContents = false
+                WrapContents = false,
+                Margin = new Padding(0)
             };
         }
 
@@ -487,11 +782,12 @@ namespace RcmdWindows
                 ColumnCount = 2,
                 RowCount = 1,
                 Padding = new Padding(0),
-                AutoSizeMode = AutoSizeMode.GrowAndShrink
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                Margin = new Padding(0)
             };
 
-            table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-            table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+            table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 42));
+            table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 58));
             return table;
         }
 
@@ -507,7 +803,7 @@ namespace RcmdWindows
             table.Controls.Add(right, 1, row);
         }
 
-        private static CheckBox CreateCheckBox(string text, bool isChecked, EventHandler onChanged)
+        private static CheckBox CreateCheckBox(string text, bool isChecked)
         {
             var checkbox = new CheckBox
             {
@@ -515,7 +811,6 @@ namespace RcmdWindows
                 AutoSize = true,
                 Checked = isChecked
             };
-            checkbox.CheckedChanged += onChanged;
             return checkbox;
         }
 
@@ -576,73 +871,13 @@ namespace RcmdWindows
 
             ClientSize = scale switch
             {
-                UiScale.Small => new Size(980, 800),
-                UiScale.Medium => new Size(1100, 860),
-                UiScale.Large => new Size(1260, 940),
-                _ => new Size(1100, 860)
+                UiScale.Small => new Size(900, 680),
+                UiScale.Medium => new Size(1020, 760),
+                UiScale.Large => new Size(1140, 840),
+                _ => new Size(1020, 760)
             };
-
-            int basePadding = scale switch
-            {
-                UiScale.Small => 16,
-                UiScale.Medium => 18,
-                UiScale.Large => 20,
-                _ => 18
-            };
-
-            int footerHeight = footer?.Height ?? 64;
-            root.Padding = new Padding(basePadding, basePadding, basePadding, basePadding + footerHeight);
-
-            if (footer != null)
-            {
-                footer.Height = scale switch
-                {
-                    UiScale.Small => 80,
-                    UiScale.Medium => 84,
-                    UiScale.Large => 90,
-                    _ => 84
-                };
-            }
-
-            UpdateSectionWidths();
         }
 
-        private void UpdateSectionWidths()
-        {
-            UpdateColumnWidths(leftColumn);
-            UpdateColumnWidths(rightColumn);
-        }
-
-        private static void UpdateColumnWidths(Control column)
-        {
-            int width = column.ClientSize.Width;
-            foreach (Control child in column.Controls)
-            {
-                int targetWidth = Math.Max(0, width - 12);
-                child.Width = targetWidth;
-
-                if (child is GroupBox groupBox)
-                {
-                    groupBox.PerformLayout();
-                    int preferredHeight = groupBox.GetPreferredSize(new Size(targetWidth, 0)).Height;
-                    groupBox.Height = preferredHeight + 20;
-                }
-            }
-        }
-
-        private class CapturedKeyItem
-        {
-            public string Label { get; }
-            public char KeyChar { get; }
-
-            public CapturedKeyItem(string label, char keyChar)
-            {
-                Label = label;
-                KeyChar = keyChar;
-            }
-
-            public override string ToString() => Label;
-        }
     }
 
     public class LetterInputDialog : Form
@@ -798,15 +1033,17 @@ namespace RcmdWindows
                 View = View.Details,
                 FullRowSelect = true,
                 GridLines = true,
-                CheckBoxes = true
+                CheckBoxes = true,
+                HideSelection = false,
+                MultiSelect = false
             };
 
-            appListView.Columns.Add("Enabled", 70, HorizontalAlignment.Center);
+            appListView.Columns.Add("Enabled", 80, HorizontalAlignment.Center);
             appListView.Columns.Add("Letter", 60, HorizontalAlignment.Center);
             appListView.Columns.Add("Application", 300, HorizontalAlignment.Left);
             appListView.Columns.Add("Status", 90, HorizontalAlignment.Center);
 
-            appListView.DoubleClick += AppListView_DoubleClick;
+            appListView.MouseDoubleClick += AppListView_MouseDoubleClick;
             appListView.ItemChecked += AppListView_ItemChecked;
 
             Controls.Add(appListView);
@@ -821,7 +1058,7 @@ namespace RcmdWindows
             Controls.Add(closeButton);
 
             UiTheme.Apply(this);
-            UiTheme.ApplyListView(appListView);
+            UiTheme.ApplyListViewBasic(appListView);
 
             LoadApps();
         }
@@ -848,6 +1085,7 @@ namespace RcmdWindows
                 {
                     Checked = !isExcluded
                 };
+                item.Text = isExcluded ? "No" : "Yes";
 
                 item.SubItems.Add(letter.ToString());
                 item.SubItems.Add(app.ProcessName);
@@ -889,6 +1127,8 @@ namespace RcmdWindows
                 settings.ExcludedProcesses.Add(processName);
             }
 
+            e.Item.Text = enabled ? "Yes" : "No";
+
             if (!enabled)
             {
                 e.Item.ForeColor = UiTheme.MutedText;
@@ -900,12 +1140,17 @@ namespace RcmdWindows
             }
         }
 
-        private void AppListView_DoubleClick(object? sender, EventArgs e)
+        private void AppListView_MouseDoubleClick(object? sender, MouseEventArgs e)
         {
-            if (appListView.SelectedItems.Count == 0)
+            var hit = appListView.HitTest(e.Location);
+            if (hit.Item == null)
                 return;
 
-            var selectedItem = appListView.SelectedItems[0];
+            // Ignore checkbox double-clicks so enabling/disabling never opens the letter dialog.
+            if ((hit.Location & ListViewHitTestLocations.StateImage) != 0)
+                return;
+
+            var selectedItem = hit.Item;
             string processName = selectedItem.Tag?.ToString() ?? "";
 
             using (var dialog = new LetterInputDialog(processName, settings))
@@ -968,6 +1213,14 @@ namespace RcmdWindows
             listView.DrawSubItem += ListView_DrawSubItem;
         }
 
+        public static void ApplyListViewBasic(ListView listView)
+        {
+            listView.OwnerDraw = false;
+            listView.BackColor = Input;
+            listView.ForeColor = Text;
+            listView.BorderStyle = BorderStyle.FixedSingle;
+        }
+
         private static void ApplyToControls(Control.ControlCollection controls)
         {
             foreach (Control control in controls)
@@ -983,6 +1236,14 @@ namespace RcmdWindows
                         break;
                     case FlowLayoutPanel flow:
                         flow.BackColor = Bg;
+                        break;
+                    case TabControl tabControl:
+                        tabControl.BackColor = Bg;
+                        tabControl.ForeColor = Text;
+                        break;
+                    case TabPage tabPage:
+                        tabPage.BackColor = Bg;
+                        tabPage.ForeColor = Text;
                         break;
                     case Panel panel:
                         panel.BackColor = Bg;
@@ -1119,4 +1380,104 @@ namespace RcmdWindows
             base.WndProc(ref m);
         }
     }
+
+    internal sealed class DarkTabControl : TabControl
+    {
+        private const int WM_PAINT = 0x000F;
+
+        public DarkTabControl()
+        {
+            DrawMode = TabDrawMode.OwnerDrawFixed;
+            SizeMode = TabSizeMode.Fixed;
+            ItemSize = new Size(150, 34);
+            Padding = new Point(18, 8);
+            Multiline = false;
+            BackColor = UiTheme.Bg;
+            ForeColor = UiTheme.Text;
+            SetStyle(ControlStyles.OptimizedDoubleBuffer, true);
+            Resize += (s, e) => Invalidate();
+        }
+
+        protected override void OnControlAdded(ControlEventArgs e)
+        {
+            base.OnControlAdded(e);
+
+            if (e.Control is TabPage page)
+            {
+                page.BackColor = UiTheme.Bg;
+                page.ForeColor = UiTheme.Text;
+            }
+        }
+
+        protected override void OnDrawItem(DrawItemEventArgs e)
+        {
+            if (e.Index < 0 || e.Index >= TabPages.Count)
+                return;
+
+            Rectangle rect = GetTabRect(e.Index);
+            bool isSelected = (e.State & DrawItemState.Selected) == DrawItemState.Selected;
+
+            Color bg = isSelected ? UiTheme.Panel : UiTheme.Control;
+            Color border = isSelected ? UiTheme.Accent : UiTheme.Border;
+
+            using (var bgBrush = new SolidBrush(bg))
+            using (var pen = new Pen(border))
+            {
+                e.Graphics.FillRectangle(bgBrush, rect);
+                e.Graphics.DrawRectangle(pen, rect);
+            }
+
+            TextRenderer.DrawText(
+                e.Graphics,
+                TabPages[e.Index].Text,
+                Font,
+                rect,
+                UiTheme.Text,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis
+            );
+        }
+
+        protected override void WndProc(ref Message m)
+        {
+            base.WndProc(ref m);
+
+            if (m.Msg == WM_PAINT)
+            {
+                PaintTabStripGaps();
+            }
+        }
+
+        private void PaintTabStripGaps()
+        {
+            using var g = Graphics.FromHwnd(Handle);
+            int stripHeight = ItemSize.Height + 10;
+
+            if (TabCount == 0)
+            {
+                using var bg = new SolidBrush(UiTheme.Control);
+                g.FillRectangle(bg, 0, 0, Width, stripHeight);
+                return;
+            }
+
+            Rectangle firstTab = GetTabRect(0);
+            Rectangle lastTab = GetTabRect(TabCount - 1);
+
+            using (var bg = new SolidBrush(UiTheme.Control))
+            {
+                if (firstTab.Left > 0)
+                {
+                    g.FillRectangle(bg, new Rectangle(0, 0, firstTab.Left, stripHeight));
+                }
+
+                if (lastTab.Right < Width)
+                {
+                    g.FillRectangle(bg, new Rectangle(lastTab.Right, 0, Width - lastTab.Right, stripHeight));
+                }
+            }
+
+            using var border = new Pen(UiTheme.Border);
+            g.DrawLine(border, 0, stripHeight - 1, Width, stripHeight - 1);
+        }
+    }
 }
+
